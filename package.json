@@ -1,0 +1,37 @@
+{
+  "name": "paxos-js",
+  "version": "1.0.0",
+  "description": "Paxos implementation using TypeScript.",
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "typings": "./dist/src/index.d.ts",
+  "scripts": {
+    "setup": "npm install",
+    "build": "tsc",
+    "test": "tsc && jest --coverage",
+    "coveralls": "cat ./coverage/lcov.info | coveralls",
+    "node": "tsc && node"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/protoman92/paxos-js.git"
+  },
+  "author": "Hai Pham",
+  "license": "Apache-2.0",
+  "bugs": {
+    "url": "https://github.com/protoman92/paxos-js/issues"
+  },
+  "homepage": "https://github.com/protoman92/paxos-js#readme",
+  "keywords": [
+    "paxos"
+  ],
+  "dependencies": {
+    "javascriptutilities": "^1.2.6"
+  },
+  "devDependencies": {
+    "@types/jest": "^21.1.6",
+    "coveralls": "^3.0.0",
+    "jest": "^21.2.1",
+    "ts-jest": "^21.2.3"
+  }
+}
