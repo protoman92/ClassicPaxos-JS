@@ -115,7 +115,7 @@ export enum Case {
   PERMISSION_GRANTED = 'PERMISSION_GRANTED',
   SUGGESTION = 'SUGGESTION',
   ACCEPTANCE = 'ACCEPTANCE',
-  NACK = 'NACK',
+  NACK_PERMISSION = 'NACK',
 }
 
 /// Represents an ambiguous message.

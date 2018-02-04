@@ -61,3 +61,13 @@ export namespace Voter {
     getLastAcceptedData(uid: string): Observable<Try<Message.LastAccepted.Type<T>>>;
   }
 }
+
+export namespace Node {
+  /**
+   * Represents the APIs usable by a Node. This encompasses all APIs available
+   * to arbiters, suggesters and voters.
+   * @extends {Voter.Type<T>} Voter API extension.
+   * @template T Generics parameter.
+   */
+  export interface Type<T> extends Voter.Type<T> {}
+}

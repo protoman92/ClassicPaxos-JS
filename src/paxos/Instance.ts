@@ -1,4 +1,3 @@
-import { BuildableType, BuilderType, Nullable } from 'javascriptutilities';
 import * as Arbiter from './Arbiter';
 import * as Suggester from './Suggester';
 import * as Voter from './Voter';
@@ -9,10 +8,9 @@ export function builder<T>(): Builder<T> {
 
 /**
  * Represents a Paxos instance.
- * @extends {BuildableType<Builder<T>>} Buildable extension.
  * @template T Generic parameter.
  */
-export interface Type<T> extends BuildableType<Builder<T>> {
+export interface Type<T> {
   readonly arbiters: Arbiter.Type[];
   readonly suggesters: Suggester.Type[];
   readonly voters: Voter.Type<T>[];
@@ -20,7 +18,7 @@ export interface Type<T> extends BuildableType<Builder<T>> {
 
 /**
  * Represents a Paxos instance.
- * @implements {Type} Type implementation.
+ * @implements {Type<T>} Type implementation.
  * @template T Generic parameter.
  */
 class Self<T> implements Type<T> {
@@ -45,12 +43,9 @@ class Self<T> implements Type<T> {
     this._suggesters = [];
     this._voters = [];
   }
-
-  public builder = (): Builder<T> => builder();
-  public cloneBuilder = (): Builder<T> => this.builder().withBuildable(this);
 }
 
-export class Builder<T> implements BuilderType<Type<T>> {
+export class Builder<T> {
   private readonly instance: Self<T>;
 
   public constructor() {
@@ -115,17 +110,6 @@ export class Builder<T> implements BuilderType<Type<T>> {
   public withVoters = (...voters: Voter.Type<T>[]): this => {
     this.instance._voters = voters;
     return this;
-  }
-
-  public withBuildable = (buildable: Nullable<Type<T>>): this => {
-    if (buildable !== undefined && buildable !== null) {
-      return this
-        .withArbiters(...buildable.arbiters)
-        .withSuggesters(...buildable.suggesters)
-        .withVoters(...buildable.voters);
-    } else {
-      return this;
-    }
   }
 
   public build = (): Type<T> => this.instance;

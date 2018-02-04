@@ -4,7 +4,6 @@
 export interface Type {
   readonly id: string;
   readonly integer: number;
-  isLaterThan(suggestionId: Type): boolean;
 }
 
 /**
@@ -27,18 +26,14 @@ export class Self implements Type {
     this._id = id;
     this._integer = integer;
   }
-
-  public isLaterThan = (suggestionId: Type): boolean => {
-    return this._integer > suggestionId.integer || this._id > suggestionId.id;
-  }
 }
 
 /**
- * Pick the supposed latest suggestion id.
+ * Check if the left-hand suggestion id is later than the right-hand one.
  * @param {Type} lhs A Type instance.
  * @param {Type} rhs A Type instance.
- * @returns {Type} A Type instance.
+ * @returns {boolean} A boolean value.
  */
-export let pickLatest = (lhs: Type, rhs: Type): Type => {
-  return lhs.isLaterThan(rhs) ? lhs : rhs;
+export let isLaterThan = (lhs: Type, rhs: Type): boolean => {
+  return lhs.integer > rhs.integer || lhs.id > rhs.id;
 };
