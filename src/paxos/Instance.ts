@@ -1,5 +1,7 @@
 import { BuildableType, BuilderType, Nullable } from 'javascriptutilities';
-import { Arbiter, Suggester, Voter } from './Role';
+import * as Arbiter from './Arbiter';
+import * as Suggester from './Suggester';
+import * as Voter from './Voter';
 
 export function builder<T>(): Builder<T> {
   return new Builder();
@@ -8,24 +10,23 @@ export function builder<T>(): Builder<T> {
 /**
  * Represents a Paxos instance.
  * @extends {BuildableType<Builder<T>>} Buildable extension.
- * @template T Generics parameter.
+ * @template T Generic parameter.
  */
 export interface Type<T> extends BuildableType<Builder<T>> {
   readonly arbiters: Arbiter.Type[];
   readonly suggesters: Suggester.Type[];
-  readonly voters: Voter.Type[];
-  commenceDecision(value: T): void;
+  readonly voters: Voter.Type<T>[];
 }
 
 /**
  * Represents a Paxos instance.
  * @implements {Type} Type implementation.
- * @template T Generics parameter.
+ * @template T Generic parameter.
  */
 class Self<T> implements Type<T> {
   public _arbiters: Arbiter.Type[];
   public _suggesters: Suggester.Type[];
-  public _voters: Voter.Type[];
+  public _voters: Voter.Type<T>[];
 
   public get arbiters(): Arbiter.Type[] {
     return this._arbiters;
@@ -35,7 +36,7 @@ class Self<T> implements Type<T> {
     return this._suggesters;
   }
 
-  public get voters(): Voter.Type[] {
+  public get voters(): Voter.Type<T>[] {
     return this.voters;
   }
 
@@ -47,10 +48,6 @@ class Self<T> implements Type<T> {
 
   public builder = (): Builder<T> => builder();
   public cloneBuilder = (): Builder<T> => this.builder().withBuildable(this);
-
-  public commenceDecision = (value: T): void => {
-    console.log(value);
-  }
 }
 
 export class Builder<T> implements BuilderType<Type<T>> {
@@ -72,10 +69,10 @@ export class Builder<T> implements BuilderType<Type<T>> {
 
   /**
    * Add a voter to the current Paxos instance.
-   * @param {Voter.Type} voter A Voter instance.
+   * @param {Voter.Type<T>} voter A Voter instance.
    * @returns {this} The current Builder instance.
    */
-  public addVoter = (voter: Voter.Type): this => {
+  public addVoter = (voter: Voter.Type<T>): this => {
     this.instance._voters.push(voter);
     return this;
   }
@@ -112,10 +109,10 @@ export class Builder<T> implements BuilderType<Type<T>> {
 
   /**
    * Set the voters for a Paxos instance.
-   * @param {...Voter.Type[]} voters An Array of voters.
+   * @param {...Voter.Type<T>[]} voters An Array of voters.
    * @returns {this} The current Builder instance.
    */
-  public withVoters = (...voters: Voter.Type[]): this => {
+  public withVoters = (...voters: Voter.Type<T>[]): this => {
     this.instance._voters = voters;
     return this;
   }

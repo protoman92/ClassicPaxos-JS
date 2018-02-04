@@ -1,10 +1,38 @@
-import { Try } from 'javascriptutilities';
+import { Try, Types } from 'javascriptutilities';
 import * as SuggestionId from './SuggestionId';
+
+/**
+ * Extract a message type from a generic message. This operation may fail if
+ * the message type does not match.
+ * @template T The message type.
+ * @template R Generic parameter.
+ * @param {Generic.Type<R>} msg A Generic message.
+ * @param {Case} type A Case instance.
+ * @param {...string[]} keys The property keys to check for type conformance.
+ * @returns {Try<T>} A Try instance.
+ */
+function extractMessage<T, R>(msg: Generic.Type<R>, type: Case, ...keys: string[]): Try<T> {
+  switch (msg.type) {
+    case type:
+      let message = msg.message;
+
+      if (Types.isInstance<T>(message, ...keys)) {
+        return Try.success(message);
+      }
+
+      break;
+
+    default:
+      break;
+    }
+
+  return Try.failure(`Incorrect message type: ${JSON.stringify(msg)}`);
+}
 
 export namespace LastAccepted {
   /**
    * Represents the accepted suggestionId and value.
-   * @template T Generics parameter.
+   * @template T Generic parameter.
    */
   export interface Type<T> {
     readonly suggestionId: SuggestionId.Type;
@@ -14,18 +42,25 @@ export namespace LastAccepted {
 
 export namespace Permission {
   export namespace Request {
+    let keys = ['senderId', 'suggestionId'];
+
     /**
      * Represents a permission request message.
      */
     export interface Type {
+      readonly senderId: string;
       readonly suggestionId: SuggestionId.Type;
+    }
+
+    export function extract<T>(msg: Generic.Type<T>): Try<Type> {
+      return extractMessage<Type, T>(msg, Case.PERMISSION_REQUEST, ...keys);
     }
   }
 
   export namespace Granted {
     /**
      * Represents a permission granted message.
-     * @template T Generics parameter.
+     * @template T Generic parameter.
      */
     export interface Type<T> {
       readonly suggestionId: SuggestionId.Type;
@@ -35,13 +70,19 @@ export namespace Permission {
 }
 
 export namespace Suggestion {
+  let keys = ['suggestionId', 'value'];
+
   /**
    * Represents a suggestion message.
-   * @template T Generics parameter.
+   * @template T Generic parameter.
    */
   export interface Type<T> {
     readonly suggestionId: SuggestionId.Type;
     readonly value: T;
+  }
+
+  export function extract<T>(msg: Generic.Type<T>): Try<Type<T>> {
+    return extractMessage<Type<T>, T>(msg, Case.SUGGESTION, ...keys);
   }
 }
 
@@ -55,11 +96,14 @@ export namespace Acceptance {
 }
 
 export namespace Nack {
-  /**
-   * Represents a NACK message.
-   */
-  export interface Type {
-    readonly suggestionId: SuggestionId.Type;
+  export namespace Permission {
+    /**
+     * Represents a Nack message for a permission request.
+     */
+    export interface Type {
+      readonly currentSuggestionId: SuggestionId.Type;
+      readonly lastAcceptedSuggestionId: SuggestionId.Type;
+    }
   }
 }
 
@@ -80,13 +124,15 @@ export type Ambiguous<T> =
   Permission.Granted.Type<T> |
   Suggestion.Type<T> |
   Acceptance.Type |
-  Nack.Type;
+  Nack.Permission.Type;
 
-/**
- * Represents an ambiguous message.
- * @template T Generics parameter.
- */
-export interface Generic<T> {
-  readonly messageType: Case;
-  readonly message: Ambiguous<T>;
+export namespace Generic {
+  /**
+   * Represents an ambiguous message.
+   * @template T Generic parameter.
+   */
+  export interface Type<T> {
+    readonly type: Case;
+    readonly message: Ambiguous<T>;
+  }
 }
