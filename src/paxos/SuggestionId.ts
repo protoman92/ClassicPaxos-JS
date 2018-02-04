@@ -34,6 +34,12 @@ export class Self implements Type {
  * @param {Type} rhs A Type instance.
  * @returns {boolean} A boolean value.
  */
-export let isLaterThan = (lhs: Type, rhs: Type): boolean => {
-  return lhs.integer > rhs.integer || lhs.id > rhs.id;
+export let isLargerThan = (lhs: Type, rhs: Type): boolean => {
+  if (lhs.integer > rhs.integer) {
+    return true;
+  } else if (lhs.integer === rhs.integer) {
+    return lhs.id > rhs.id;
+  } else {
+    return false;
+  }
 };

@@ -29,6 +29,16 @@ function extractMessage<T, R>(msg: Generic.Type<R>, type: Case, ...keys: string[
   return Try.failure(`Incorrect message type: ${JSON.stringify(msg)}`);
 }
 
+/**
+ * Count the number of times a message type is found in an Array of messages. 
+ * @param {Case} type A Case instance.
+ * @param {...Generic.Type<T>[]} messages An Array of messages.
+ * @returns {number} A number value.
+ */
+function countMessage<T>(type: Case, ...messages: Generic.Type<T>[]): number {
+  return messages.filter(v => v.type === type).length;
+}
+
 export namespace LastAccepted {
   /**
    * Represents the accepted suggestionId and value.
@@ -55,6 +65,10 @@ export namespace Permission {
     export function extract<T>(msg: Generic.Type<T>): Try<Type> {
       return extractMessage<Type, T>(msg, Case.PERMISSION_REQUEST, ...keys);
     }
+
+    export function count<T>(...messages: Generic.Type<T>[]): number {
+      return countMessage(Case.PERMISSION_REQUEST, ...messages);
+    }
   }
 
   export namespace Granted {
@@ -65,6 +79,10 @@ export namespace Permission {
     export interface Type<T> {
       readonly suggestionId: SuggestionId.Type;
       readonly lastAccepted: Try<LastAccepted.Type<T>>;
+    }
+
+    export function count<T>(...messages: Generic.Type<T>[]): number {
+      return countMessage(Case.PERMISSION_GRANTED, ...messages);
     }
   }
 }
@@ -83,6 +101,10 @@ export namespace Suggestion {
 
   export function extract<T>(msg: Generic.Type<T>): Try<Type<T>> {
     return extractMessage<Type<T>, T>(msg, Case.SUGGESTION, ...keys);
+  }
+
+  export function count<T>(...messages: Generic.Type<T>[]): number {
+    return countMessage(Case.SUGGESTION, ...messages);
   }
 }
 
@@ -103,6 +125,10 @@ export namespace Nack {
     export interface Type {
       readonly currentSuggestionId: SuggestionId.Type;
       readonly lastAcceptedSuggestionId: SuggestionId.Type;
+    }
+
+    export function count<T>(...messages: Generic.Type<T>[]): number {
+      return countMessage(Case.NACK_PERMISSION, ...messages);
     }
   }
 }

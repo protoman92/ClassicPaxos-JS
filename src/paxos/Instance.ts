@@ -12,7 +12,7 @@ export function builder<T>(): Builder<T> {
  */
 export interface Type<T> {
   readonly arbiters: Arbiter.Type[];
-  readonly suggesters: Suggester.Type[];
+  readonly suggesters: Suggester.Type<T>[];
   readonly voters: Voter.Type<T>[];
 }
 
@@ -23,14 +23,14 @@ export interface Type<T> {
  */
 class Self<T> implements Type<T> {
   public _arbiters: Arbiter.Type[];
-  public _suggesters: Suggester.Type[];
+  public _suggesters: Suggester.Type<T>[];
   public _voters: Voter.Type<T>[];
 
   public get arbiters(): Arbiter.Type[] {
     return this._arbiters;
   }
 
-  public get suggesters(): Suggester.Type[] {
+  public get suggesters(): Suggester.Type<T>[] {
     return this._suggesters;
   }
 
@@ -54,10 +54,10 @@ export class Builder<T> {
 
   /**
    * Add a suggester to the current Paxos instance.
-   * @param {Suggester.Type} arbiter A Suggester instance.
+   * @param {Suggester.Type<T>} arbiter A Suggester instance.
    * @returns {this} The current Builder instance.
    */
-  public addSuggester = (suggester: Suggester.Type): this => {
+  public addSuggester = (suggester: Suggester.Type<T>): this => {
     this.instance._suggesters.push(suggester);
     return this;
   }
@@ -94,10 +94,10 @@ export class Builder<T> {
 
   /**
    * Set the suggesters for a Paxos instance.
-   * @param {...Suggester.Type[]} suggesters An Array of suggesters.
+   * @param {...Suggester.Type<T>[]} suggesters An Array of suggesters.
    * @returns {this} The current Builder instance.
    */
-  public withSuggesters = (...suggesters: Suggester.Type[]): this => {
+  public withSuggesters = (...suggesters: Suggester.Type<T>[]): this => {
     this.instance._suggesters = suggesters;
     return this;
   }

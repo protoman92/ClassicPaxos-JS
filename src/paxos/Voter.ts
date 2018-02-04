@@ -1,10 +1,13 @@
 import { Observable, Subscription } from 'rxjs';
+import * as uuid from 'uuid';
 import { Nullable, Try } from 'javascriptutilities';
 import * as API from './API';
 import * as Message from './Message';
 import { Participant } from './Role';
 import * as SuggestionId from './SuggestionId';
 
+type PermitReq = Message.Permission.Request.Type;
+type SuggestReq<T> = Message.Suggestion.Type<T>;
 type VoterAPI<T> = API.Voter.Type<T>;
 
 export function builder<T>(): Builder<T> {
@@ -65,7 +68,7 @@ class Self<T> implements Type<T> {
   }
 
   public constructor() {
-    this._uid = '';
+    this._uid = uuid();
     this.subscription = new Subscription();
   }
 
@@ -87,55 +90,76 @@ class Self<T> implements Type<T> {
     try {
       let api = this.api.getOrThrow();
       let uid = this.uid;
-
       let messageStream = api.receiveMessages(uid).shareReplay(1);
+      let errorTrigger = api.errorTrigger(uid);
 
-      messageStream
+      let permissionRequestStream = messageStream
         .map(v => v.flatMap(v1 => Message.Permission.Request.extract(v1)))
         .flatMap(v => this.onPermissionRequest(api, v))
-        .subscribe()
-        .toBeDisposedBy(subscription);
+        .shareReplay(1);
 
-      messageStream
+      let suggestionRequestStream = messageStream
         .map(v => v.flatMap(v1 => Message.Suggestion.extract(v1)))
         .flatMap(v => this.onSuggestionRequest(api, v))
-        .subscribe()
-        .toBeDisposedBy(subscription);
-    } catch {}
+        .shareReplay(1);
+
+      errorTrigger.map(v => permissionRequestStream
+        .mapNonNilOrEmpty(v1 => v1.error)
+        .subscribe(v)
+        .toBeDisposedBy(subscription));
+
+      errorTrigger.map(v => suggestionRequestStream
+        .mapNonNilOrEmpty(v1 => v1.error)
+        .subscribe(v)
+        .toBeDisposedBy(subscription));
+    } catch (e) {
+      throw e;
+    }
   }
 
-  private onPermissionRequest = (
-    api: VoterAPI<T>,
-    message: Try<Message.Permission.Request.Type>,
-  ): Observable<Try<any>> => {
+  /**
+   * On permission request, we need to fetch the last accepted suggestion id
+   * and compare it to the current one, then send either a granted or a nack
+   * response.
+   * @param {VoterAPI<T>} api VoterAPI instance.
+   * @param {Try<PermitReq>} msg A Permission Request message.
+   * @returns {Observable<Try<any>>} An Observable instance.
+   */
+  private onPermissionRequest = (api: VoterAPI<T>, msg: Try<PermitReq>) => {
     try {
-      let request = message.getOrThrow();
+      let request = msg.getOrThrow();
       let sender = request.senderId;
-      let suggestion = request.suggestionId;
+      let sid = request.suggestionId;
       let uid = this.uid;
 
       return api.getLastGrantedSuggestionId(uid)
-        .map(v => v.getOrThrow())
         .flatMap((v): Observable<Message.Generic.Type<T>> => {
-          if (SuggestionId.isLaterThan(suggestion, v)) {
-            return api.storeLastGrantedSuggestionId(uid, suggestion)
+          /// If there was no last accepted suggestion id, proceed to grant
+          /// permission. Otherwise, check if the last accepted id is logically
+          /// less than the current suggestion id.
+          if (v.map(v1 => SuggestionId.isLargerThan(sid, v1)).getOrElse(true)) {
+            return api.storeLastGrantedSuggestionId(uid, sid)
               .map(v1 => v1.getOrThrow())
               .flatMap(() => api.getLastAcceptedData(uid))
               .map((v1): Message.Permission.Granted.Type<T> => ({
-                suggestionId: suggestion,
-                lastAccepted: v1,
+                suggestionId: sid, lastAccepted: v1,
               }))
               .map((v1): Message.Generic.Type<T> => ({
-                type: Message.Case.PERMISSION_GRANTED,
-                message: v1,
+                type: Message.Case.PERMISSION_GRANTED, message: v1,
               }));
           } else {
+            /// The use of getOrThrow here is purely out of convenience, because
+            /// under no circumstances will it actually throw an error. This
+            /// could certainly use some optimization at a later date.
             let nack: Message.Nack.Permission.Type = {
-              currentSuggestionId: suggestion,
-              lastAcceptedSuggestionId: v,
+              currentSuggestionId: sid,
+              lastAcceptedSuggestionId: v.getOrThrow(),
             };
 
-            return Observable.of({ type: Message.Case.NACK_PERMISSION, message: nack });
+            return Observable.of<Message.Generic.Type<T>>({
+              type: Message.Case.NACK_PERMISSION,
+              message: nack,
+            });
           }
         })
         .flatMap(v => api.sendMessage(sender, v))
@@ -145,11 +169,8 @@ class Self<T> implements Type<T> {
     }
   }
 
-  private onSuggestionRequest = (
-    _api: VoterAPI<T>,
-    _message: Try<Message.Suggestion.Type<T>>,
-  ): Observable<Try<any>> => {
-    return Observable.empty();
+  private onSuggestionRequest = (_api: VoterAPI<T>, _message: Try<SuggestReq<T>>) => {
+    return Observable.empty<Try<any>>();
   }
 }
 

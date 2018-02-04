@@ -26,14 +26,14 @@
     "paxos"
   ],
   "dependencies": {
-    "javascriptutilities": "^1.2.6"
+    "@types/uuid": "^3.4.3",
+    "javascriptutilities": "^1.2.6",
+    "uuid": "^3.2.1"
   },
   "devDependencies": {
     "@types/jest": "^21.1.6",
-    "@types/uuid": "^3.4.3",
     "coveralls": "^3.0.0",
     "jest": "^21.2.1",
-    "ts-jest": "^21.2.3",
-    "uuid": "^3.2.1"
+    "ts-jest": "^21.2.3"
   }
 }

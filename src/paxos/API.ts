@@ -1,4 +1,4 @@
-import { Observable } from 'rxjs';
+import { Observable, Observer } from 'rxjs';
 import { Try } from 'javascriptutilities';
 import * as Message from './Message';
 import * as SId from './SuggestionId';
@@ -23,7 +23,31 @@ export namespace Participant {
      * @returns {Observable<Try<any>>} An Observable instance.
      */
     sendMessage(target: string, msg: Message.Generic.Type<T>): Observable<Try<any>>;
+
+    /**
+     * Error trigger for a participant. This error could be stored somewhere
+     * like a log.
+     * @param {string} uid The participant's uid.
+     * @returns {Try<Observer<Error>>} A Try instance.
+     */
+    errorTrigger(uid: string): Try<Observer<Error>>;
+
+    /**
+     * The error stream that relays errors for a particular participant.
+     * @param {string} uid The participant's uid.
+     * @returns {Observable<Try<Error>>} An Observable instance.
+     */
+    errorStream(uid: string): Observable<Try<Error>>;
   }
+}
+
+export namespace Suggester {
+  /**
+   * Represents the APIs used by a suggester.
+   * @extends {Participant.Type<T>} Participant extension.
+   * @template T Generics parameter.
+   */
+  export interface Type<T> extends Participant.Type<T> {}
 }
 
 export namespace Voter {
