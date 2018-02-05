@@ -32,6 +32,10 @@ class Self<T> implements Type<T> {
     return Try.unwrap(this._suggester, 'Missing suggester');
   }
 
+  public get quorumSize(): number {
+    return this.suggester.map(v => v.quorumSize).getOrElse(0);
+  }
+
   public get voter(): Try<Voter.Type<T>> {
     return Try.unwrap(this._voter, 'Missing voter');
   }
@@ -42,6 +46,10 @@ class Self<T> implements Type<T> {
 
   public constructor() {
     this._uid = '';
+  }
+
+  public calculateQuorumMajority = (): number => {
+    return this.suggester.map(v => v.calculateQuorumMajority()).getOrElse(0);
   }
 
   public suggesterMessageStream = (): Observable<Try<Message.Generic.Type<T>>> => {

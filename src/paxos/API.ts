@@ -41,13 +41,33 @@ export namespace Participant {
   }
 }
 
+export namespace MajorityCalculator {
+  /**
+   * Represents the APIs to decide the majority count from a quorum size. By
+   * default, classical Paxos requires only a simple majority (i.e. > 50%). If
+   * this is not defined, use that rule.
+   */
+  export interface Type {
+    calculateMajority?(quorumSize: number): number;
+  }
+}
+
 export namespace Suggester {
   /**
    * Represents the APIs used by a suggester.
    * @extends {Participant.Type<T>} Participant extension.
+   * @extends {MajorityCalculator.Type} Majority calculator extension.
    * @template T Generics parameter.
    */
-  export interface Type<T> extends Participant.Type<T> {}
+  export interface Type<T> extends Participant.Type<T>, MajorityCalculator.Type {
+    /**
+     * Get the first suggestion value that will be used if there has not been
+     * any accepted value yet.
+     * @param {string} uid The suggester's uid.
+     * @returns {Observable<Try<T>>} An Observable instance.
+     */
+    getFirstSuggestionValue(uid: string): Observable<Try<T>>;
+  }
 }
 
 export namespace Voter {
@@ -56,10 +76,6 @@ export namespace Voter {
    * @extends {Participant.Type<T>} Participant extension.
    */
   export interface Type<T> extends Participant.Type<T> {
-    // grantPermission(message: Permission.Granted.Type<T>): Observable<Try<void>>;
-    // sendNack(message: Nack.Type): Observable<Try<void>>;
-    // storeLastAcceptedData(obj: LastAccepted.Type<T>): Observable<Try<void>>;
-
     /**
      * Retrieve the suggestion id of the last granted permission request. This
      * will be used by the voter to process new permission requests.
@@ -90,8 +106,9 @@ export namespace Node {
   /**
    * Represents the APIs usable by a Node. This encompasses all APIs available
    * to arbiters, suggesters and voters.
+   * @extends {Suggester.Type<T>} Suggester API extension.
    * @extends {Voter.Type<T>} Voter API extension.
    * @template T Generics parameter.
    */
-  export interface Type<T> extends Voter.Type<T> {}
+  export interface Type<T> extends Suggester.Type<T>, Voter.Type<T> {}
 }

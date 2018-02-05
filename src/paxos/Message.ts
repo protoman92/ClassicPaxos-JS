@@ -48,6 +48,18 @@ export namespace LastAccepted {
     readonly suggestionId: SuggestionId.Type;
     readonly value: T;
   }
+
+  /**
+   * Find the logically highest suggestion id.
+   * @template T Generics parameter.
+   * @param {...Type[]} accepted Varargs of last accepted data.
+   * @returns {Try<Type<T>>} A Try instance.
+   */
+  export function highestSuggestionId<T>(...accepted: Type<T>[]): Try<Type<T>> {
+    return Try.unwrap(accepted.reduce((v1, v2) =>
+      SuggestionId.isLargerThan(v1.suggestionId, v2.suggestionId) ? v1 : v2
+    ));
+  }
 }
 
 export namespace Permission {
@@ -72,6 +84,8 @@ export namespace Permission {
   }
 
   export namespace Granted {
+    let keys = ['suggestionId', 'lastAccepted'];
+
     /**
      * Represents a permission granted message.
      * @template T Generic parameter.
@@ -79,6 +93,10 @@ export namespace Permission {
     export interface Type<T> {
       readonly suggestionId: SuggestionId.Type;
       readonly lastAccepted: Try<LastAccepted.Type<T>>;
+    }
+
+    export function extract<T>(msg: Generic.Type<T>): Try<Type<T>> {
+      return extractMessage<Type<T>, T>(msg, Case.PERMISSION_GRANTED, ...keys);
     }
 
     export function count<T>(...messages: Generic.Type<T>[]): number {

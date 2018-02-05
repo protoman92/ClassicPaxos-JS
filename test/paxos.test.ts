@@ -190,6 +190,11 @@ class PaxosAPI<T> implements API.Node.Type<T> {
     return Observable.of(Try.success(undefined));
   }
 
+  /// Suggester API.
+  public getFirstSuggestionValue(_uid: string): Observable<Try<T>> {
+    return Observable.empty();
+  }
+
   /// Voter API.
   public getLastGrantedSuggestionId(uid: string): Observable<Try<SuggestionId.Type>> {
     return Observable.of(Try.unwrap(this.lastGrantedSuggestionId[uid]));

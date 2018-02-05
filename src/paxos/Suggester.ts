@@ -1,9 +1,15 @@
-import { Observable } from 'rxjs';
+import { Observable, Subscription } from 'rxjs';
 import * as uuid from 'uuid';
-import { Nullable, Try } from 'javascriptutilities';
+import { Collections, Numbers, Nullable, Try } from 'javascriptutilities';
 import * as API from './API';
+import * as Config from './Config';
 import * as Message from './Message';
+import * as SuggestionId from './SuggestionId';
 import { Participant } from './Role';
+
+export type PermitGrant<T> = Message.Permission.Granted.Type<T>;
+export type SuggestAPI<T> = API.Suggester.Type<T>;
+export type SuggestConfig = Config.Suggester.Type;
 
 export function builder<T>(): Builder<T> {
   return new Builder();
@@ -37,6 +43,8 @@ export let hasMessageType = (type: Message.Case): boolean => {
  * @template T Generic parameter.
  */
 export interface Type<T> extends Participant.Type {
+  readonly quorumSize: number;
+  calculateQuorumMajority(): number;
   suggesterMessageStream(): Observable<Try<Message.Generic.Type<T>>>;
 }
 
@@ -47,18 +55,48 @@ export interface Type<T> extends Participant.Type {
  */
 class Self<T> implements Type<T> {
   public _uid: string;
-  public _api: Nullable<API.Suggester.Type<T>>;
+  public _api: Nullable<SuggestAPI<T>>;
+  public _config: Nullable<SuggestConfig>;
+  private readonly subscription: Subscription;
 
   public get uid(): string {
     return this._uid;
   }
 
-  public get api(): Try<API.Suggester.Type<T>> {
+  public get quorumSize(): number {
+    return this.config.map(v => v.quorumSize).getOrElse(0);
+  }
+
+  public get api(): Try<SuggestAPI<T>> {
     return Try.unwrap(this._api, 'API for suggester not available');
+  }
+
+  private get config(): Try<SuggestConfig> {
+    return Try.unwrap(this._config, 'Suggester config not set');
   }
 
   public constructor() {
     this._uid = uuid();
+    this.subscription = new Subscription();
+  }
+
+  public calculateQuorumMajority = (): number => {
+    let quorumSize = this.quorumSize;
+
+    return this.api
+      .flatMap(v => Try.unwrap(() => v.calculateMajority))
+      .map(v => v(quorumSize))
+      .getOrElse(() => this.calculateDefaultQuorumMajority(quorumSize));
+  }
+
+  /**
+   * If no majority calculation mechanism is provided, use the default simple
+   * majority.
+   * @param {number} quorumSize A number value.
+   * @returns {number} A number value.
+   */
+  private calculateDefaultQuorumMajority = (quorumSize: number): number => {
+    return (Numbers.isOdd(quorumSize) ? quorumSize - 1 : quorumSize) / 2 + 1;
   }
 
   public suggesterMessageStream = (): Observable<Try<Message.Generic.Type<T>>> => {
@@ -70,6 +108,61 @@ class Self<T> implements Type<T> {
     } catch (e) {
       return Observable.of(Try.failure(e));
     }
+  }
+
+  public setupBindings(): void {
+    try {
+      let api = this.api.getOrThrow();
+      let config = this.config.getOrThrow();
+      let uid = this.uid;
+      let takeCutoff = config.takeCutoff;
+      let subscription = this.subscription;
+      let messageStream = api.receiveMessages(uid).shareReplay(1);
+      let errorTrigger = api.errorTrigger(uid).getOrThrow();
+      let majority = this.calculateQuorumMajority();
+
+      let grantedStream = messageStream
+        .map(v => v.flatMap(v1 => Message.Permission.Granted.extract(v1)))
+        .mapNonNilOrEmpty(v => v)
+        .groupBy(v => SuggestionId.toString(v.suggestionId))
+        .switchMap(v => v.takeUntil(Observable.timer(takeCutoff)).toArray())
+        .shareReplay(1);
+
+      grantedStream
+        .filter(v => v.length >= majority)
+        .flatMap(v => this.onPermissionGranted(api, v))
+        .subscribe()
+        .toBeDisposedBy(subscription);
+
+      messageStream
+        .mapNonNilOrEmpty(v1 => v1.error)
+        .subscribe(errorTrigger)
+        .toBeDisposedBy(subscription);
+    } catch (e) {
+      throw e;
+    }
+  }
+
+  /**
+   * Upon receipt of permission granted responses, the suggester first needs to
+   * check whether, among all the responses, the majority has accepted some
+   * value previously. If this is the case, it must propose the same value as
+   * that belonging to the last accepted data with the logically highest
+   * suggestion id.
+   * @param {SuggestAPI<T>} api A suggester API instance.
+   * @param {PermitGrant<T>[]} messages An Array of PermitGrant responses.
+   * @returns {Observable<Try<any>>} An Observable instance.
+   */
+  private onPermissionGranted(api: SuggestAPI<T>, messages: PermitGrant<T>[]) {
+    let uid = this.uid;
+    let majority = this.calculateQuorumMajority();
+
+    return Try.success(messages)
+      .map(v => Collections.flatMap(v.map(v1 => v1.lastAccepted)))
+      .filter(v => v.length >= majority, v => `${v} has less than ${majority}`)
+      .flatMap(v => Message.LastAccepted.highestSuggestionId(...v))
+      .map(v => Observable.of(Try.success(v.value)))
+      .getOrElse(() => api.getFirstSuggestionValue(uid));
   }
 }
 
@@ -91,14 +184,27 @@ export class Builder<T> {
   }
 
   /**
-   * Set the suggester API.
-   * @param {Nullable<API.Suggester.Type<T>>} api A suggester API instance.
+   * Set the quorum size.
+   * @param {Nullable<SuggestConfig>} config A suggester config instance.
    * @returns {this} The current Builder instance.
    */
-  public withAPI = (api: Nullable<API.Suggester.Type<T>>): this => {
+  public withConfig(config: Nullable<SuggestConfig>): this {
+    this.suggester._config = config;
+    return this;
+  }
+
+  /**
+   * Set the suggester API.
+   * @param {Nullable<SuggestAPI<T>>} api A suggester API instance.
+   * @returns {this} The current Builder instance.
+   */
+  public withAPI = (api: Nullable<SuggestAPI<T>>): this => {
     this.suggester._api = api;
     return this;
   }
 
-  public build = (): Type<T> => this.suggester;
+  public build = (): Type<T> => {
+    this.suggester.setupBindings();
+    return this.suggester;
+  }
 }

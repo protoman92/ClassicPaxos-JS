@@ -1,4 +1,14 @@
 /**
+ * Convert a suggestion id to a string value. This could be used for grouping
+ * unique ids.
+ * @param {Type} type A Type instance.
+ * @returns {string} A string value.
+ */
+export let toString = (type: Type): string => {
+  return `${type.id}-${type.integer}`;
+};
+
+/**
  * Represents a suggestion id.
  */
 export interface Type {
@@ -42,4 +52,14 @@ export let isLargerThan = (lhs: Type, rhs: Type): boolean => {
   } else {
     return false;
   }
+};
+
+/**
+ * Take the logically higher suggestion id.
+ * @param {Type} lhs A Type instance.
+ * @param {Type} rhs A Type instance.
+ * @returns {Type} A Type instance.
+ */
+export let takeHigher = (lhs: Type, rhs: Type): Type => {
+  return isLargerThan(lhs, rhs) ? lhs : rhs;
 };
