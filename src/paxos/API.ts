@@ -1,5 +1,5 @@
 import { Observable, Observer } from 'rxjs';
-import { Try } from 'javascriptutilities';
+import { Numbers, Try } from 'javascriptutilities';
 import * as Message from './Message';
 import * as SId from './SuggestionId';
 
@@ -50,6 +50,16 @@ export namespace MajorityCalculator {
   export interface Type {
     calculateMajority?(quorumSize: number): number;
   }
+
+  /**
+   * If no majority calculation mechanism is provided, use the default simple
+   * majority.
+   * @param {number} quorumSize A number value.
+   * @returns {number} A number value.
+   */
+  export let calculateDefault = (quorumSize: number): number => {
+    return (Numbers.isOdd(quorumSize) ? quorumSize - 1 : quorumSize) / 2 + 1;
+  };
 }
 
 export namespace Suggester {

@@ -1,6 +1,8 @@
 import { Observable } from 'rxjs';
+import * as uuid from 'uuid';
 import { Nullable, Try } from 'javascriptutilities';
 import * as Arbiter from './Arbiter';
+import * as Config from './Config';
 import * as Message from './Message';
 import * as Suggester from './Suggester';
 import * as Voter from './Voter';
@@ -20,6 +22,7 @@ export interface Type<T> extends Arbiter.Type, Suggester.Type<T>, Voter.Type<T> 
 
 class Self<T> implements Type<T> {
   public _uid: string;
+  public _config: Nullable<Config.Node.Type>;
   public _arbiter: Nullable<Arbiter.Type>;
   public _suggester: Nullable<Suggester.Type<T>>;
   public _voter: Nullable<Voter.Type<T>>;
@@ -32,10 +35,6 @@ class Self<T> implements Type<T> {
     return Try.unwrap(this._suggester, 'Missing suggester');
   }
 
-  public get quorumSize(): number {
-    return this.suggester.map(v => v.quorumSize).getOrElse(0);
-  }
-
   public get voter(): Try<Voter.Type<T>> {
     return Try.unwrap(this._voter, 'Missing voter');
   }
@@ -44,8 +43,16 @@ class Self<T> implements Type<T> {
     return this._uid;
   }
 
+  public get quorumSize(): number {
+    return this.config.map(v => v.quorumSize).getOrElse(0);
+  }
+
+  private get config(): Try<Config.Node.Type> {
+    return Try.unwrap(this._config, 'Missing config');
+  }
+
   public constructor() {
-    this._uid = '';
+    this._uid = uuid();
   }
 
   public calculateQuorumMajority = (): number => {
@@ -85,6 +92,16 @@ export class Builder<T> {
    */
   public withUID(uid: string): this {
     this.node._uid = uid;
+    return this;
+  }
+
+  /**
+   * Set the config instance for the current node.
+   * @param {Nullable<Config.Node.Type>} config A node config instance.
+   * @returns {this} The current Builder instance.
+   */
+  public withConfig = (config: Nullable<Config.Node.Type>): this => {
+    this.node._config = config;
     return this;
   }
 

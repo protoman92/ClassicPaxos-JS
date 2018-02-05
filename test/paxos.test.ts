@@ -1,10 +1,11 @@
 import { Observable, Observer, Subject, Subscription } from 'rxjs';
 import * as uuid from 'uuid';
-import { JSObject, Try } from 'javascriptutilities';
+import { JSObject, Nullable, Numbers, Try } from 'javascriptutilities';
 
 import {
   API,
   Arbiter,
+  Config,
   Instance,
   Message,
   Node,
@@ -20,14 +21,20 @@ import {
   // Suggestion,
 } from '../src/paxos/Message';
 
+type NodeAPI<T> = API.Node.Type<T>;
+type NodeConfig = Config.Node.Type;
 type Value = number;
+let rangeMin = 0;
+let rangeMax = 100000;
+let valueRandomizer = (): Value => Numbers.randomBetween(rangeMin, rangeMax);
 
-function createNode<T>(uid: string, api: API.Node.Type<T>): Node.Type<T> {
+function createNode<T>(uid: string, api: NodeAPI<T>, config: NodeConfig) {
   let arbiter: Arbiter.Type = { uid };
 
   let suggester = Suggester.builder()
     .withUID(uid)
     .withAPI(api)
+    .withConfig(config)
     .build();
 
   let voter = Voter.builder()
@@ -37,13 +44,14 @@ function createNode<T>(uid: string, api: API.Node.Type<T>): Node.Type<T> {
 
   return Node.builder()
     .withUID(uid)
+    .withConfig(config)
     .withArbiter(arbiter)
     .withSuggester(suggester)
     .withVoter(voter)
     .build();
 }
 
-class PaxosAPI<T> implements API.Node.Type<T> {
+class PaxosAPI<T> implements NodeAPI<T> {
   public permissionReq: JSObject<Subject<Message.Permission.Request.Type>>;
   public permissionGranted: JSObject<Subject<Message.Permission.Granted.Type<T>>>;
   public suggestionReq: JSObject<Subject<Message.Suggestion.Type<T>>>;
@@ -51,8 +59,9 @@ class PaxosAPI<T> implements API.Node.Type<T> {
   public lastGrantedSuggestionId: JSObject<SuggestionId.Type>;
   public lastAcceptedData: JSObject<LastAccepted.Type<T>>;
   public errorSubject: JSObject<Subject<Error>>;
+  public valueRandomizer: Nullable<() => T>;
 
-  public constructor() {
+  public constructor(vRandomizer: () => T) {
     this.permissionReq = {};
     this.permissionGranted = {};
     this.suggestionReq = {};
@@ -60,6 +69,7 @@ class PaxosAPI<T> implements API.Node.Type<T> {
     this.lastGrantedSuggestionId = {};
     this.lastAcceptedData = {};
     this.errorSubject = {};
+    this.valueRandomizer = vRandomizer;
   }
 
   private registerParticipants(...participants: string[]): void {
@@ -161,7 +171,7 @@ class PaxosAPI<T> implements API.Node.Type<T> {
     }
   }
 
-  public sendMessage(uid: string, msg: Message.Generic.Type<T>): Observable<Try<any>> {
+  public sendMessage(uid: string, msg: Message.Generic.Type<T>) {
     switch (msg.type) {
       case Message.Case.PERMISSION_REQUEST:
         let pRequest = <Message.Permission.Request.Type>msg.message;
@@ -192,15 +202,19 @@ class PaxosAPI<T> implements API.Node.Type<T> {
 
   /// Suggester API.
   public getFirstSuggestionValue(_uid: string): Observable<Try<T>> {
-    return Observable.empty();
+    return Try.unwrap(this.valueRandomizer)
+
+      .map(v => v())
+      .map(v => Observable.of(Try.success(v)))
+      .getOrThrow();
   }
 
   /// Voter API.
-  public getLastGrantedSuggestionId(uid: string): Observable<Try<SuggestionId.Type>> {
+  public getLastGrantedSuggestionId(uid: string) {
     return Observable.of(Try.unwrap(this.lastGrantedSuggestionId[uid]));
   }
 
-  public storeLastGrantedSuggestionId(uid: string, sid: SuggestionId.Type): Observable<Try<any>> {
+  public storeLastGrantedSuggestionId(uid: string, sid: SuggestionId.Type) {
     this.lastGrantedSuggestionId[uid] = sid;
     return Observable.of(Try.success(undefined));
   }
@@ -210,8 +224,94 @@ class PaxosAPI<T> implements API.Node.Type<T> {
   }
 }
 
+class PaxosConfig implements NodeConfig {
+  public quorumSize: number;
+  public takeCutoff: number;
+
+  public constructor() {
+    this.quorumSize = 0;
+    this.takeCutoff = 0;
+  }
+}
+
+describe('Suggester should be implemented correctly', () => {
+  let voterCount = 10;
+  let voterIds: string[];
+  let voters: Voter.Type<Value>[];
+  let voterMessages: Message.Generic.Type<Value>[];
+  let suggesterId: string;
+  let suggester: Suggester.Type<Value>;
+  let suggesterMessages: Message.Generic.Type<Value>[];
+  let api: PaxosAPI<Value>;
+  let config: NodeConfig;
+  let subscription: Subscription;
+
+  beforeEach(() => {
+    api = new PaxosAPI(valueRandomizer);
+    config = new PaxosConfig();
+    config.quorumSize = voterCount;
+    config.takeCutoff = 2000;
+    suggesterId = uuid();
+    voterIds = Numbers.range(0, voterCount).map(() => uuid());
+    api.registerSuggesters(suggesterId);
+    api.registerVoters(...voterIds);
+    suggester = createNode(suggesterId, api, config);
+    suggesterMessages = [];
+    voters = voterIds.map(v => createNode(v, api, config));
+    voterMessages = [];
+    subscription = new Subscription();
+
+    suggester.suggesterMessageStream()
+      .mapNonNilOrEmpty(v => v)
+      .doOnNext(v => suggesterMessages.push(v))
+      .subscribe()
+      .toBeDisposedBy(subscription);
+
+    Observable.merge(...voters.map(v => v.voterMessageStream()))
+      .mapNonNilOrEmpty(v => v)
+      .doOnNext(v => voterMessages.push(v))
+      .subscribe()
+      .toBeDisposedBy(subscription);
+  });
+
+  it.only('Suggester receiving with no majority prior value - should suggest own value', done => {
+    /// Setup
+    let priorValue = rangeMax + 1;
+    let majority = API.MajorityCalculator.calculateDefault(voterCount);
+    let minority = voterCount - majority;
+    let grantedSbj = Try.unwrap(api.permissionGranted[suggesterId]).getOrThrow();
+    let sid: SuggestionId.Type = { id: '0', integer: 1000 };
+
+    let withNoPriorValue = Numbers.range(0, majority).map(() => ({
+      suggestionId: sid,
+      lastAccepted: Try.failure<LastAccepted.Type<Value>>(''),
+    }));
+
+    let withPriorValue = Numbers.range(0, minority).map(v => ({
+      suggestionId: sid,
+      lastAccepted: Try.success<LastAccepted.Type<Value>>({
+        suggestionId: { id: uuid(), integer: v },
+        value: priorValue,
+      }),
+    }));
+
+    let allResponses = (new Array<Permission.Granted.Type<Value>>())
+      .concat(withNoPriorValue)
+      .concat(withPriorValue);
+
+    /// When
+    allResponses.forEach(v => grantedSbj.next(v));
+
+    /// Then
+    setTimeout(() => {
+      done();
+    }, config.takeCutoff + 0.1);
+  });
+});
+
 describe('Voter should be implemented correctly', () => {
   let api: PaxosAPI<Value>;
+  let config: NodeConfig;
   let suggester: Suggester.Type<Value>;
   let suggesterUid: string;
   let suggesterMessages: Message.Generic.Type<Value>[];
@@ -221,14 +321,20 @@ describe('Voter should be implemented correctly', () => {
   let subscription: Subscription;
 
   beforeEach(() => {
-    api = new PaxosAPI();
+    api = new PaxosAPI(valueRandomizer);
+
+    config = Config.Node.builder()
+      .withQuorumSize(1)
+      .withTakeCutoff(1)
+      .build();
+
     suggesterUid = uuid();
     voterUid = uuid();
     api.registerSuggesters(suggesterUid);
     api.registerVoters(voterUid);
-    suggester = createNode(suggesterUid, api);
+    suggester = createNode(suggesterUid, api, config);
     suggesterMessages = [];
-    voter = createNode(voterUid, api);
+    voter = createNode(voterUid, api, config);
     voterMessages = [];
     subscription = new Subscription();
 
@@ -274,7 +380,7 @@ describe('Voter should be implemented correctly', () => {
 describe('Paxos instance should be implemented correctly', () => {
   let api: PaxosAPI<Value>;
 
-  beforeEach(() => api = new PaxosAPI());
+  beforeEach(() => api = new PaxosAPI(valueRandomizer));
 
   it('Paxos instance should be implemented correctly', () => {
     console.log(Instance.builder().build());

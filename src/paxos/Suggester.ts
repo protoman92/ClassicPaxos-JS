@@ -1,6 +1,6 @@
 import { Observable, Subscription } from 'rxjs';
 import * as uuid from 'uuid';
-import { Collections, Numbers, Nullable, Try } from 'javascriptutilities';
+import { Collections, Nullable, Try } from 'javascriptutilities';
 import * as API from './API';
 import * as Config from './Config';
 import * as Message from './Message';
@@ -81,22 +81,12 @@ class Self<T> implements Type<T> {
   }
 
   public calculateQuorumMajority = (): number => {
-    let quorumSize = this.quorumSize;
+    let qSize = this.quorumSize;
 
     return this.api
-      .flatMap(v => Try.unwrap(() => v.calculateMajority))
-      .map(v => v(quorumSize))
-      .getOrElse(() => this.calculateDefaultQuorumMajority(quorumSize));
-  }
-
-  /**
-   * If no majority calculation mechanism is provided, use the default simple
-   * majority.
-   * @param {number} quorumSize A number value.
-   * @returns {number} A number value.
-   */
-  private calculateDefaultQuorumMajority = (quorumSize: number): number => {
-    return (Numbers.isOdd(quorumSize) ? quorumSize - 1 : quorumSize) / 2 + 1;
+      .flatMap(v => Try.unwrap(v.calculateMajority))
+      .map(v => v(qSize))
+      .getOrElse(() => API.MajorityCalculator.calculateDefault(qSize));
   }
 
   public suggesterMessageStream = (): Observable<Try<Message.Generic.Type<T>>> => {

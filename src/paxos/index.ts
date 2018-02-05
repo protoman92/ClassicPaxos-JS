@@ -1,5 +1,6 @@
 import * as API from './API';
 import * as Arbiter from './Arbiter';
+import * as Config from './Config';
 import * as Instance from './Instance';
 import * as Message from './Message';
 import * as Node from './Node';
@@ -11,6 +12,7 @@ import * as Voter from './Voter';
 export {
   API,
   Arbiter,
+  Config,
   Instance,
   Message,
   Node,
