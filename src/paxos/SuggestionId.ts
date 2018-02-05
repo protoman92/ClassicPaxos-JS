@@ -48,7 +48,7 @@ export let isLargerThan = (lhs: Type, rhs: Type): boolean => {
   if (lhs.integer > rhs.integer) {
     return true;
   } else if (lhs.integer === rhs.integer) {
-    return lhs.id > rhs.id;
+    return lhs.id >= rhs.id;
   } else {
     return false;
   }

@@ -106,9 +106,7 @@ class Self<T> implements Type<T> {
         .toBeDisposedBy(subscription);
 
       Observable
-        .merge(
-          messageStream.mapNonNilOrEmpty(v => v.error),
-        )
+        .merge(messageStream.mapNonNilOrEmpty(v => v.error))
         .flatMap(e => api.sendErrorStack(uid, e))
         .subscribe()
         .toBeDisposedBy(subscription);

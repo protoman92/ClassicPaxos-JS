@@ -82,6 +82,57 @@ export namespace Suggester {
   }
 }
 
+export namespace RetryHandler {
+  /**
+   * Represents the APIs used to coordinate retry attempts.
+   */
+  export interface Type {
+    /**
+     * Listen to retry events and coordinate attempts using certain strategies.
+     * @param {Observable<any>} trigger An Observable instance.
+     * @returns {Observable<any>} An Observable instance.
+     */
+    coordinateRetries(trigger: Observable<any>): Observable<any>;
+  }
+
+  export namespace Noop {
+    /**
+     * No-op retry coordinator that does nothing.
+     * @implements {Type} Type implementation.
+     */
+    export class Self implements Type {
+      public coordinateRetries = (trigger: Observable<any>) => trigger;
+    }
+  }
+
+  export namespace ExponentialBackoff {
+    /**
+     * Coordinate retries using exponential backoff strategy.
+     * @implements {Type} Type implementation.
+     */
+    export class Self implements Type {
+      private readonly initialDelay: number;
+      private readonly multiple: number;
+
+      public constructor(initialDelay: number, multiple: number) {
+        this.initialDelay = initialDelay;
+        this.multiple = multiple;
+      }
+
+      public coordinateRetries = (trigger: Observable<any>): Observable<any> => {
+        let initialDelay = this.initialDelay;
+        let multiple = this.multiple;
+
+        return trigger
+          .scan((acc, _v): number => acc + 1, 0)
+          .map(v => initialDelay * (multiple ** v))
+          .concatMap(v => Observable.timer(v))
+          .map(() => undefined);
+      }
+    }
+  }
+}
+
 export namespace Voter {
   /**
    * Represents the APIs used by a voter.

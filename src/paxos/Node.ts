@@ -1,4 +1,4 @@
-import { Observable } from 'rxjs';
+import { Observable, Observer, Subject } from 'rxjs';
 import * as uuid from 'uuid';
 import { Nullable, Try } from 'javascriptutilities';
 import * as Arbiter from './Arbiter';
@@ -57,6 +57,18 @@ class Self<T> implements Type<T> {
 
   public calculateQuorumMajority = (): number => {
     return this.suggester.map(v => v.calculateQuorumMajority()).getOrElse(0);
+  }
+
+  public tryPermissionTrigger = (): Observer<any> => {
+    return this.suggester
+      .map(v => v.tryPermissionTrigger())
+      .getOrElse(new Subject());
+  }
+
+  public tryPermissionStream = (): Observable<any> => {
+    return this.suggester
+      .map(v => v.tryPermissionStream())
+      .getOrElse(Observable.empty());
   }
 
   public suggesterMessageStream = (): Observable<Try<Message.Generic.Type<T>>> => {

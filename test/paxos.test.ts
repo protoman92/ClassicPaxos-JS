@@ -24,6 +24,7 @@ import {
 } from './../src/paxos';
 
 import { Ambiguous as AmbiguousMsg, LastAccepted } from '../src/paxos/Message';
+import { setTimeout } from 'timers';
 
 type GenericMsg<T> = Message.Generic.Type<T>;
 type NodeAPI<T> = API.Node.Type<T>;
@@ -268,6 +269,8 @@ class PaxosConfig implements NodeConfig {
 
 describe('Suggester should be implemented correctly', () => {
   let voterCount = 10;
+  let majority = API.MajorityCalculator.calculateDefault(voterCount);
+  let minority = voterCount - majority;
   let voterIds: string[];
   let voters: Voter.Type<Value>[];
   let voterMessages: GenericMsg<Value>[];
@@ -309,27 +312,22 @@ describe('Suggester should be implemented correctly', () => {
   it('Suggester receiving with no majority prior value - should suggest own value', done => {
     /// Setup
     let priorValue = rangeMax + 1;
-    let majority = API.MajorityCalculator.calculateDefault(voterCount);
-    let minority = voterCount - majority;
     let grantedSbj = Try.unwrap(api.permissionGranted[suggesterId]).getOrThrow();
     let sid: SID.Type = { id: '0', integer: 1000 };
 
-    let withNoPriorValue = Numbers.range(0, majority).map(() => ({
-      suggestionId: sid,
-      lastAccepted: Try.failure<LastAccepted.Type<Value>>(''),
-    }));
+    let allResponses = [
+      ...Numbers.range(0, majority).map(() => ({
+        suggestionId: sid,
+        lastAccepted: Try.failure<LastAccepted.Type<Value>>(''),
+      })),
 
-    let withPriorValue = Numbers.range(0, minority).map(v => ({
-      suggestionId: sid,
-      lastAccepted: Try.success<LastAccepted.Type<Value>>({
-        suggestionId: { id: uuid(), integer: v },
-        value: priorValue,
-      }),
-    }));
-
-    let allResponses = (new Array<PGrantedMsg<Value>>())
-      .concat(withNoPriorValue)
-      .concat(withPriorValue);
+      ...Numbers.range(0, minority).map(v => ({
+        suggestionId: sid,
+        lastAccepted: Try.success<LastAccepted.Type<Value>>({
+          suggestionId: { id: uuid(), integer: v }, value: priorValue,
+        }),
+      })),
+    ];
 
     /// When
     allResponses.forEach(v => grantedSbj.next(v));
@@ -341,12 +339,47 @@ describe('Suggester should be implemented correctly', () => {
       Try.success(voterMessages)
         .map(v => v.map(v1 => Message.Suggestion.extract(v1)))
         .map(v => Collections.flatMap(v))
-        .filter(v => v.length > 0, 'Empty array')
+        .filter(v => v.length > 0, '')
         .map(v => v.map(v1 => v1.value))
         .doOnNext(v => expect(v.every(v1 => v1 !== priorValue)).toBeTruthy())
         .doOnNext(v => expect(Collections.unique(v)).toHaveLength(1))
         .getOrThrow();
       done();
+    }, config.takeCutoff + 0.1);
+  });
+
+  it('Suggester receiving majority decided last value - should propose same value', () => {
+    /// Setup
+    let priorValue = rangeMax + 1;
+    let grantedSbj = Try.unwrap(api.permissionGranted[suggesterId]).getOrThrow();
+    let sid = { id: '0', integer: 1000 };
+
+    let allResponses = [
+      ...Numbers.range(0, majority).map(v => ({
+        suggestionId: sid,
+        lastAccepted: Try.success<LastAccepted.Type<Value>>({
+          suggestionId: { id: uuid(), integer: v }, value: priorValue,
+        }),
+      })),
+
+      ...Numbers.range(0, minority).map(() => ({
+        suggestionId: sid,
+        lastAccepted: Try.failure<LastAccepted.Type<Value>>(''),
+      })),
+    ];
+
+    /// When
+    allResponses.forEach(v => grantedSbj.next(v));
+
+    /// Then
+    setTimeout(() => {
+      Try.success(voterMessages)
+        .map(v => v.map(v1 => Message.Suggestion.extract(v1)))
+        .map(v => Collections.flatMap(v))
+        .filter(v => v.length > 0, '')
+        .map(v => v.map(v1 => v1.value))
+        .doOnNext(v => expect(v.every(v1 => v1 === priorValue)).toBeTruthy())
+        .getOrThrow();
     }, config.takeCutoff + 0.1);
   });
 });

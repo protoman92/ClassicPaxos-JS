@@ -1,4 +1,11 @@
-import { Observable, Subscription } from 'rxjs';
+import {
+  BehaviorSubject,
+  Observable,
+  Observer,
+  Subject,
+  Subscription,
+} from 'rxjs';
+
 import * as uuid from 'uuid';
 import { Collections, Nullable, Try } from 'javascriptutilities';
 import * as API from './API';
@@ -45,6 +52,17 @@ export let hasMessageType = (type: Message.Case): boolean => {
 export interface Type<T> extends Participant.Type {
   readonly quorumSize: number;
   calculateQuorumMajority(): number;
+  tryPermissionTrigger(): Observer<any>;
+
+  /**
+   * In a typical implementation, the retry stream will be supplied to another
+   * retry manager that determines how and when often to retry. For e.g., an
+   * exponential backoff-based retry mechanism may delay retry efforts longer
+   * as the retry count increases.
+   * @returns {Observable<any>} An Observable instance.
+   */
+  tryPermissionStream(): Observable<any>;
+
   suggesterMessageStream(): Observable<Try<Message.Generic.Type<T>>>;
 }
 
@@ -57,6 +75,9 @@ class Self<T> implements Type<T> {
   public _uid: string;
   public _api: Nullable<SuggestAPI<T>>;
   public _config: Nullable<SuggestConfig>;
+  public retryCoordinator: API.RetryHandler.Type;
+  private readonly suggestionIdSbj: BehaviorSubject<Nullable<SID.Type>>;
+  private readonly tryPermissionSbj: Subject<any>;
   private readonly subscription: Subscription;
 
   public get uid(): string {
@@ -77,6 +98,9 @@ class Self<T> implements Type<T> {
 
   public constructor() {
     this._uid = uuid();
+    this.retryCoordinator = new API.RetryHandler.Noop.Self();
+    this.suggestionIdSbj = new BehaviorSubject(undefined);
+    this.tryPermissionSbj = new Subject();
     this.subscription = new Subscription();
   }
 
@@ -100,6 +124,11 @@ class Self<T> implements Type<T> {
     }
   }
 
+  public tryPermissionTrigger = (): Observer<any> => this.tryPermissionSbj;
+  public tryPermissionStream = (): Observable<any> => this.tryPermissionSbj;
+  private sidTrigger = (): Observer<Nullable<SID.Type>> => this.suggestionIdSbj;
+  private sidStream = (): Observable<Nullable<SID.Type>> => this.suggestionIdSbj;
+
   public setupBindings(): void {
     try {
       let api = this.api.getOrThrow();
@@ -107,6 +136,7 @@ class Self<T> implements Type<T> {
       let uid = this.uid;
       let takeCutoff = config.takeCutoff;
       let subscription = this.subscription;
+      let sidStream = this.sidStream();
       let messageStream = api.receiveMessage(uid).shareReplay(1);
       let majority = this.calculateQuorumMajority();
 
@@ -122,10 +152,28 @@ class Self<T> implements Type<T> {
         .flatMap(v => this.onPermissionGranted(api, v))
         .shareReplay(1);
 
+      let tryStream = this.retryCoordinator
+        .coordinateRetries(this.tryPermissionStream())
+        .shareReplay(1);
+
+      Observable
+        .merge(
+          tryStream
+            .withLatestFrom(sidStream, (_v1, v2) => v2)
+            .mapNonNilOrElse<SID.Type>(v => v, { id: uid, integer: 0 }),
+        )
+        .subscribe(this.sidTrigger())
+        .toBeDisposedBy(subscription);
+
+      Observable
+        .merge(grantedStream.filter(v => v.length < majority))
+        .subscribe(this.tryPermissionTrigger())
+        .toBeDisposedBy(subscription);
+
       Observable
         .merge(
           suggestStream.mapNonNilOrEmpty(v => v.error),
-          messageStream.mapNonNilOrEmpty(v1 => v1.error),
+          messageStream.mapNonNilOrEmpty(v => v.error),
         )
         .flatMap(e => api.sendErrorStack(uid, e))
         .subscribe()
@@ -138,7 +186,7 @@ class Self<T> implements Type<T> {
   /**
    * Upon receipt of permission granted responses, the suggester first needs to
    * check whether, among all the responses, the majority have accepted some
-   * values (they don't have to be the same value) previously. If this is the
+   * values previously (they don't have to be the same value). If this is the
    * case, it must propose the same value as that belonging to the last accepted
    * data with the logically highest suggestion id. Otherwise, it can suggest
    * an arbitrary value.
@@ -190,8 +238,18 @@ export class Builder<T> {
    * @param {Nullable<SuggestConfig>} config A suggester config instance.
    * @returns {this} The current Builder instance.
    */
-  public withConfig(config: Nullable<SuggestConfig>): this {
+  public withConfig = (config: Nullable<SuggestConfig>): this => {
     this.suggester._config = config;
+    return this;
+  }
+
+  /**
+   * Set the retry coordinator instance.
+   * @param {API.RetryHandler.Type} coordinator A retry handler instance.
+   * @returns {this} The current Builder instance.
+   */
+  public withRetryCoordinator(coordinator: API.RetryHandler.Type): this {
+    this.suggester.retryCoordinator = coordinator;
     return this;
   }
 
