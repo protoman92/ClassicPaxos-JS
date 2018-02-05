@@ -4,7 +4,7 @@ import { Nullable, Try } from 'javascriptutilities';
 import * as API from './API';
 import * as Message from './Message';
 import { Participant } from './Role';
-import * as SuggestionId from './SuggestionId';
+import * as SID from './SuggestionId';
 
 type PermitReq = Message.Permission.Request.Type;
 type SuggestReq<T> = Message.Suggestion.Type<T>;
@@ -76,7 +76,7 @@ class Self<T> implements Type<T> {
     try {
       let api = this.api.getOrThrow();
 
-      return api.receiveMessages(this.uid).filter(v => {
+      return api.receiveMessage(this.uid).filter(v => {
         return v.map(v1 => hasMessageType(v1.type)).getOrElse(false);
       });
     } catch (e) {
@@ -89,8 +89,7 @@ class Self<T> implements Type<T> {
       let api = this.api.getOrThrow();
       let uid = this.uid;
       let subscription = this.subscription;
-      let messageStream = api.receiveMessages(uid).shareReplay(1);
-      let errorTrigger = api.errorTrigger(uid).getOrThrow();
+      let messageStream = api.receiveMessage(uid).shareReplay(1);
 
       messageStream
         .map(v => v.flatMap(v1 => Message.Permission.Request.extract(v1)))
@@ -106,9 +105,12 @@ class Self<T> implements Type<T> {
         .subscribe()
         .toBeDisposedBy(subscription);
 
-      messageStream
-        .mapNonNilOrEmpty(v => v.error)
-        .subscribe(errorTrigger)
+      Observable
+        .merge(
+          messageStream.mapNonNilOrEmpty(v => v.error),
+        )
+        .flatMap(e => api.sendErrorStack(uid, e))
+        .subscribe()
         .toBeDisposedBy(subscription);
     } catch (e) {
       throw e;
@@ -133,7 +135,7 @@ class Self<T> implements Type<T> {
         /// If there was no last accepted suggestion id, proceed to grant
         /// permission. Otherwise, check if the last accepted id is logically
         /// less than the current suggestion id.
-        if (v.map(v1 => SuggestionId.isLargerThan(sid, v1)).getOrElse(true)) {
+        if (v.map(v1 => SID.isLargerThan(sid, v1)).getOrElse(true)) {
           return api.storeLastGrantedSuggestionId(uid, sid)
             .map(v1 => v1.getOrThrow())
             .flatMap(() => api.getLastAcceptedData(uid))

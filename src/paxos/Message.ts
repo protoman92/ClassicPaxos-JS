@@ -1,5 +1,5 @@
 import { Try, Types } from 'javascriptutilities';
-import * as SuggestionId from './SuggestionId';
+import * as SID from './SuggestionId';
 
 /**
  * Extract a message type from a generic message. This operation may fail if
@@ -30,7 +30,7 @@ function extractMessage<T, R>(msg: Generic.Type<R>, type: Case, ...keys: string[
 }
 
 /**
- * Count the number of times a message type is found in an Array of messages. 
+ * Count the number of times a message type is found in an Array of messages.
  * @param {Case} type A Case instance.
  * @param {...Generic.Type<T>[]} messages An Array of messages.
  * @returns {number} A number value.
@@ -45,7 +45,7 @@ export namespace LastAccepted {
    * @template T Generic parameter.
    */
   export interface Type<T> {
-    readonly suggestionId: SuggestionId.Type;
+    readonly suggestionId: SID.Type;
     readonly value: T;
   }
 
@@ -57,7 +57,7 @@ export namespace LastAccepted {
    */
   export function highestSuggestionId<T>(...accepted: Type<T>[]): Try<Type<T>> {
     return Try.unwrap(accepted.reduce((v1, v2) =>
-      SuggestionId.isLargerThan(v1.suggestionId, v2.suggestionId) ? v1 : v2
+      SID.isLargerThan(v1.suggestionId, v2.suggestionId) ? v1 : v2
     ));
   }
 }
@@ -71,7 +71,7 @@ export namespace Permission {
      */
     export interface Type {
       readonly senderId: string;
-      readonly suggestionId: SuggestionId.Type;
+      readonly suggestionId: SID.Type;
     }
 
     export function extract<T>(msg: Generic.Type<T>): Try<Type> {
@@ -91,7 +91,7 @@ export namespace Permission {
      * @template T Generic parameter.
      */
     export interface Type<T> {
-      readonly suggestionId: SuggestionId.Type;
+      readonly suggestionId: SID.Type;
       readonly lastAccepted: Try<LastAccepted.Type<T>>;
     }
 
@@ -113,7 +113,7 @@ export namespace Suggestion {
    * @template T Generic parameter.
    */
   export interface Type<T> {
-    readonly suggestionId: SuggestionId.Type;
+    readonly suggestionId: SID.Type;
     readonly value: T;
   }
 
@@ -131,7 +131,7 @@ export namespace Acceptance {
    * Represents an acceptance message.
    */
   export interface Type {
-    suggestionId: SuggestionId.Type;
+    suggestionId: SID.Type;
   }
 }
 
@@ -141,8 +141,8 @@ export namespace Nack {
      * Represents a Nack message for a permission request.
      */
     export interface Type {
-      readonly currentSuggestionId: SuggestionId.Type;
-      readonly lastAcceptedSuggestionId: SuggestionId.Type;
+      readonly currentSuggestionId: SID.Type;
+      readonly lastAcceptedSuggestionId: SID.Type;
     }
 
     export function count<T>(...messages: Generic.Type<T>[]): number {

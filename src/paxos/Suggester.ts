@@ -4,7 +4,7 @@ import { Collections, Nullable, Try } from 'javascriptutilities';
 import * as API from './API';
 import * as Config from './Config';
 import * as Message from './Message';
-import * as SuggestionId from './SuggestionId';
+import * as SID from './SuggestionId';
 import { Participant } from './Role';
 
 export type PermitGrant<T> = Message.Permission.Granted.Type<T>;
@@ -93,7 +93,7 @@ class Self<T> implements Type<T> {
     try {
       let api = this.api.getOrThrow();
 
-      return api.receiveMessages(this.uid)
+      return api.receiveMessage(this.uid)
         .filter(v => v.map(v1 => hasMessageType(v1.type)).getOrElse(false));
     } catch (e) {
       return Observable.of(Try.failure(e));
@@ -107,26 +107,28 @@ class Self<T> implements Type<T> {
       let uid = this.uid;
       let takeCutoff = config.takeCutoff;
       let subscription = this.subscription;
-      let messageStream = api.receiveMessages(uid).shareReplay(1);
-      let errorTrigger = api.errorTrigger(uid).getOrThrow();
+      let messageStream = api.receiveMessage(uid).shareReplay(1);
       let majority = this.calculateQuorumMajority();
 
       let grantedStream = messageStream
         .map(v => v.flatMap(v1 => Message.Permission.Granted.extract(v1)))
         .mapNonNilOrEmpty(v => v)
-        .groupBy(v => SuggestionId.toString(v.suggestionId))
+        .groupBy(v => SID.toString(v.suggestionId))
         .switchMap(v => v.takeUntil(Observable.timer(takeCutoff)).toArray())
         .shareReplay(1);
 
-      grantedStream
+      let suggestStream = grantedStream
         .filter(v => v.length >= majority)
         .flatMap(v => this.onPermissionGranted(api, v))
-        .subscribe()
-        .toBeDisposedBy(subscription);
+        .shareReplay(1);
 
-      messageStream
-        .mapNonNilOrEmpty(v1 => v1.error)
-        .subscribe(errorTrigger)
+      Observable
+        .merge(
+          suggestStream.mapNonNilOrEmpty(v => v.error),
+          messageStream.mapNonNilOrEmpty(v1 => v1.error),
+        )
+        .flatMap(e => api.sendErrorStack(uid, e))
+        .subscribe()
         .toBeDisposedBy(subscription);
     } catch (e) {
       throw e;
@@ -135,10 +137,11 @@ class Self<T> implements Type<T> {
 
   /**
    * Upon receipt of permission granted responses, the suggester first needs to
-   * check whether, among all the responses, the majority has accepted some
-   * value previously. If this is the case, it must propose the same value as
-   * that belonging to the last accepted data with the logically highest
-   * suggestion id.
+   * check whether, among all the responses, the majority have accepted some
+   * values (they don't have to be the same value) previously. If this is the
+   * case, it must propose the same value as that belonging to the last accepted
+   * data with the logically highest suggestion id. Otherwise, it can suggest
+   * an arbitrary value.
    * @param {SuggestAPI<T>} api A suggester API instance.
    * @param {PermitGrant<T>[]} messages An Array of PermitGrant responses.
    * @returns {Observable<Try<any>>} An Observable instance.
@@ -147,12 +150,21 @@ class Self<T> implements Type<T> {
     let uid = this.uid;
     let majority = this.calculateQuorumMajority();
 
+    /// All suggestion ids should be the same here since we have already grouped
+    /// messages by their suggestion ids.
+    let sid = Collections.first(messages).map(v => v.suggestionId);
+
     return Try.success(messages)
       .map(v => Collections.flatMap(v.map(v1 => v1.lastAccepted)))
       .filter(v => v.length >= majority, v => `${v} has less than ${majority}`)
       .flatMap(v => Message.LastAccepted.highestSuggestionId(...v))
       .map(v => Observable.of(Try.success(v.value)))
-      .getOrElse(() => api.getFirstSuggestionValue(uid));
+      .getOrElse(() => api.getFirstSuggestionValue(uid))
+      .map(v => v.zipWith(sid, (a, b) => ({ suggestionId: b, value: a })))
+      .map(v => v.getOrThrow())
+      .map(v => ({ type: Message.Case.SUGGESTION, message: v }))
+      .flatMap(v => api.broadcastMessage(v))
+      .catchJustReturn(e => Try.failure(e));
   }
 }
 

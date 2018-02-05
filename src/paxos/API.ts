@@ -1,4 +1,4 @@
-import { Observable, Observer } from 'rxjs';
+import { Observable } from 'rxjs';
 import { Numbers, Try } from 'javascriptutilities';
 import * as Message from './Message';
 import * as SId from './SuggestionId';
@@ -14,7 +14,7 @@ export namespace Participant {
      * @param {string} uid The participant's id.
      * @returns {Observable<Try<Message.Generic.Type<T>>>} An Observable instance.
      */
-    receiveMessages(uid: string): Observable<Try<Message.Generic.Type<T>>>;
+    receiveMessage(uid: string): Observable<Try<Message.Generic.Type<T>>>;
 
     /**
      * Send a message to a target.
@@ -25,19 +25,21 @@ export namespace Participant {
     sendMessage(target: string, msg: Message.Generic.Type<T>): Observable<Try<any>>;
 
     /**
-     * Error trigger for a participant. This error could be stored somewhere
-     * like a log.
-     * @param {string} uid The participant's uid.
-     * @returns {Try<Observer<Error>>} A Try instance.
+     * Broadcast a message to all listeners. This is useful, for e.g., when a
+     * suggester tries to send a permission/suggestion request - this way, the
+     * suggester does not need to know who the voters are.
+     * @param {Message.Generic.Type<T>} msg A generic message instance.
+     * @returns {Observable<Try<any>>} An Observable instance.
      */
-    errorTrigger(uid: string): Try<Observer<Error>>;
+    broadcastMessage(msg: Message.Generic.Type<T>): Observable<Try<any>>;
 
     /**
      * The error stream that relays errors for a particular participant.
      * @param {string} uid The participant's uid.
+     * @param {Error} error An Error instance.
      * @returns {Observable<Try<Error>>} An Observable instance.
      */
-    errorStream(uid: string): Observable<Try<Error>>;
+    sendErrorStack(uid: string, error: Error): Observable<Try<Error>>;
   }
 }
 
