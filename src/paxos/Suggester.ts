@@ -28,8 +28,8 @@ export function builder<T>(): Builder<T> {
  */
 export let hasMessageType = (type: Message.Case): boolean => {
   switch (type) {
-    case Message.Case.PERMISSION_GRANTED:
-    case Message.Case.NACK_PERMISSION:
+    case Message.Case.PERMIT_GRANTED:
+    case Message.Case.NACK:
       return true;
 
     default:
@@ -146,11 +146,6 @@ class Self<T> implements Type<T> {
         .switchMap(v => v.takeUntil(Observable.timer(takeCutoff)).toArray())
         .shareReplay(1);
 
-      let suggestStream = grantedStream
-        .filter(v => v.length >= majority)
-        .flatMap(v => this.onPermissionGranted(api, v))
-        .shareReplay(1);
-
       let tryStream = this.retryCoordinator
         .coordinateRetries(this.tryPermissionStream())
         .shareReplay(1);
@@ -166,7 +161,7 @@ class Self<T> implements Type<T> {
         /// store the highest last granted suggestion id in order to request
         /// permission with a higher SID the next time.
         messageStream
-          .map(v => v.flatMap(v1 => Message.Nack.Permission.extract(v1)))
+          .map(v => v.flatMap(v1 => Message.Nack.extract(v1)))
           .mapNonNilOrEmpty(v => v)
           .groupBy(v => SID.toString(v.currentSID))
           .switchMap(v => v.takeUntil(Observable.timer(takeCutoff)).toArray())
@@ -186,16 +181,22 @@ class Self<T> implements Type<T> {
       /// for permission.
       tryStream
         .mapNonNilOrElse(v => v, { id: uid, integer: 0 })
-        .map(v => ({ senderId: uid, suggestionId: v }))
-        .map(v => ({ type: Message.Case.PERMISSION_REQUEST, message: v }))
+        .map((v): Message.Permission.Request.Type => ({ senderId: uid, sid: v }))
+        .map((v): Message.Generic.Type<T> => ({
+          type: Message.Case.PERMIT_REQUEST, message: v,
+        }))
         .switchMap(v => api.broadcastMessage(v))
         .subscribe()
         .toBeDisposedBy(subscription);
 
       Observable
-        .merge(
-          suggestStream.mapNonNilOrEmpty(v => v.error),
+        .merge<Error>(
           messageStream.mapNonNilOrEmpty(v => v.error),
+
+          grantedStream
+            .filter(v => v.length >= majority)
+            .flatMap(v => this.onPermissionGranted(api, v))
+            .mapNonNilOrEmpty(v => v.error),
         )
         .flatMap(e => api.sendErrorStack(uid, e))
         .subscribe()
@@ -227,11 +228,11 @@ class Self<T> implements Type<T> {
     return Try.success(messages)
       .map(v => Collections.flatMap(v.map(v1 => v1.lastAccepted)))
       .filter(v => v.length >= majority, v => `${v} has less than ${majority}`)
-      .flatMap(v => SID.highestSID(v, v1 => v1.suggestionId))
+      .flatMap(v => SID.highestSID(v, v1 => v1.sid))
       .map(v => Observable.of(Try.success(v.value)))
       .getOrElse(() => api.getFirstSuggestionValue(uid))
-      .map(v => v.zipWith(sid, (a, b) => ({ suggestionId: b, value: a })))
-      .map(v => v.getOrThrow())
+      .map(v => v.zipWith(sid, (a, b) => ({ senderId: uid, sid: b, value: a })))
+      .map((v): Message.Suggestion.Type<T> => v.getOrThrow())
       .map(v => ({ type: Message.Case.SUGGESTION, message: v }))
       .flatMap(v => api.broadcastMessage(v))
       .catchJustReturn(e => Try.failure(e));

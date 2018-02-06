@@ -1,8 +1,7 @@
-import { Observable, Observer, Subject, Subscriber } from 'rxjs';
+import { Observable, Subject, Subscriber } from 'rxjs';
 
 import {
   JSObject,
-  MappableObserver,
   Nullable,
   Numbers,
   Objects,
@@ -22,12 +21,13 @@ import {
 
 import { Ambiguous, LastAccepted } from '../src/paxos/Message';
 
+export type AcceptMsg<T> = Message.Acceptance.Type<T>;
 export type AmbiguousMsg<T> = Ambiguous<T>;
 export type GenericMsg<T> = Message.Generic.Type<T>;
 export type LastAcceptedData<T> = LastAccepted.Type<T>;
 export type NodeAPI<T> = API.Node.Type<T>;
 export type NodeConfig = Config.Node.Type;
-export type NackPermitMsg = Message.Nack.Permission.Type;
+export type NackMsg = Message.Nack.Type;
 export type PGrantedMsg<T> = Message.Permission.Granted.Type<T>;
 export type PRequestMsg = Message.Permission.Request.Type;
 export type SuggestMsg<T> = Message.Suggestion.Type<T>;
@@ -36,21 +36,21 @@ export let rangeMin = 0;
 export let rangeMax = 100000;
 export let valueRandomizer = (): Value => Numbers.randomBetween(rangeMin, rangeMax);
 
-export function createNode<T>(uid: string, api: NodeAPI<T>, config: NodeConfig) {
+export function createNode<T>(uid: string, api: NodeAPI<T>, config: NodeConfig): Node.Type<T> {
   let arbiter: Arbiter.Type = { uid };
 
-  let suggester = Suggester.builder()
+  let suggester = Suggester.builder<T>()
     .withUID(uid)
     .withAPI(api)
     .withConfig(config)
     .build();
 
-  let voter = Voter.builder()
+  let voter = Voter.builder<T>()
     .withUID(uid)
     .withAPI(api)
     .build();
 
-  return Node.builder()
+  return Node.builder<T>()
     .withUID(uid)
     .withConfig(config)
     .withArbiter(arbiter)
@@ -60,36 +60,23 @@ export function createNode<T>(uid: string, api: NodeAPI<T>, config: NodeConfig) 
 }
 
 export class PaxosAPI<T> implements NodeAPI<T> {
-  public permissionReq: JSObject<Subject<PRequestMsg>>;
-  public permissionGranted: JSObject<Subject<PGrantedMsg<T>>>;
-  public suggestionReq: JSObject<Subject<SuggestMsg<T>>>;
-  public nackPermitRes: JSObject<Subject<NackPermitMsg>>;
-  public lastGrantedSuggestionId: JSObject<SID.Type>;
+  public permitReq: JSObject<Subject<PRequestMsg>>;
+  public permitGranted: JSObject<Subject<PGrantedMsg<T>>>;
+  public suggestReq: JSObject<Subject<SuggestMsg<T>>>;
+  public acceptReq: JSObject<Subject<AcceptMsg<T>>>;
+  public nackRes: JSObject<Subject<NackMsg>>;
+  public lastGrantedSID: JSObject<SID.Type>;
   public lastAcceptedData: JSObject<LastAccepted.Type<T>>;
   public errorSubject: JSObject<Subject<Error>>;
   public valueRandomizer: Nullable<() => T>;
 
-  public get messageTriggers(): Observer<GenericMsg<T>>[] {
-    let mapObserverToGeneric = (obs: JSObject<Subject<AmbiguousMsg<T>>>) => {
-      return Objects.entries(obs).map(v => v['1']).map(v => {
-        return new MappableObserver.Self<GenericMsg<T>, AmbiguousMsg<T>>(v, v1 => v1.message);
-      });
-    };
-
-    return [
-      ...mapObserverToGeneric(this.permissionReq),
-      ...mapObserverToGeneric(this.permissionGranted),
-      ...mapObserverToGeneric(this.suggestionReq),
-      ...mapObserverToGeneric(this.nackPermitRes),
-    ];
-  }
-
   public constructor(vRandomizer: () => T) {
-    this.permissionReq = {};
-    this.permissionGranted = {};
-    this.suggestionReq = {};
-    this.nackPermitRes = {};
-    this.lastGrantedSuggestionId = {};
+    this.acceptReq = {};
+    this.permitReq = {};
+    this.permitGranted = {};
+    this.suggestReq = {};
+    this.nackRes = {};
+    this.lastGrantedSID = {};
     this.lastAcceptedData = {};
     this.errorSubject = {};
     this.valueRandomizer = vRandomizer;
@@ -105,21 +92,29 @@ export class PaxosAPI<T> implements NodeAPI<T> {
       newErrorTriggers);
   }
 
+  public registerArbiters(...arbiters: string[]): void {
+    let newAcceptance = arbiters
+      .map(v => ({ [v]: new Subject<AcceptMsg<T>>() }))
+      .reduce((a, b) => Object.assign({}, a, b), {});
+
+    this.acceptReq = Object.assign({}, this.acceptReq, newAcceptance);
+  }
+
   public registerSuggesters(...suggesters: string[]): void {
     let newPermissionGranted = suggesters
-      .map(v => ({ [v]: new Subject<Message.Permission.Granted.Type<T>>() }))
+      .map(v => ({ [v]: new Subject<PGrantedMsg<T>>() }))
       .reduce((a, b) => Object.assign({}, a, b), {});
 
     let newNackRequestResponse = suggesters
-      .map(v => ({ [v]: new Subject<NackPermitMsg>() }))
+      .map(v => ({ [v]: new Subject<NackMsg>() }))
       .reduce((a, b) => Object.assign({}, a, b), {});
 
-    this.permissionGranted = Object.assign({},
-      this.permissionGranted,
+    this.permitGranted = Object.assign({},
+      this.permitGranted,
       newPermissionGranted);
 
-    this.nackPermitRes = Object.assign({},
-      this.nackPermitRes,
+    this.nackRes = Object.assign({},
+      this.nackRes,
       newNackRequestResponse);
 
     this.registerParticipants(...suggesters);
@@ -134,12 +129,12 @@ export class PaxosAPI<T> implements NodeAPI<T> {
       .map(v => ({ [v]: new Subject<SuggestMsg<T>>() }))
       .reduce((a, b) => Object.assign({}, a, b), {});
 
-    this.permissionReq = Object.assign({},
-      this.permissionReq,
+    this.permitReq = Object.assign({},
+      this.permitReq,
       newPermissionRequests);
 
-    this.suggestionReq = Object.assign({},
-      this.suggestionReq,
+    this.suggestReq = Object.assign({},
+      this.suggestReq,
       newSuggestionRequests);
 
     this.registerParticipants(...voters);
@@ -147,33 +142,33 @@ export class PaxosAPI<T> implements NodeAPI<T> {
 
   public receiveMessage(uid: string): Observable<Try<GenericMsg<T>>> {
     return Observable.merge<Try<GenericMsg<T>>>(
-      Try.unwrap(this.permissionReq[uid])
+      Try.unwrap(this.permitReq[uid])
         .map(v => v.map((v1): GenericMsg<T> => ({
-          type: Message.Case.PERMISSION_REQUEST,
+          type: Message.Case.PERMIT_REQUEST,
           message: v1 as AmbiguousMsg<T>,
         })))
         .map(v => v.map(v1 => Try.success(v1)))
         .getOrElse(Observable.empty()),
 
-      Try.unwrap(this.permissionGranted[uid])
+      Try.unwrap(this.permitGranted[uid])
         .map(v => v.map((v1): GenericMsg<T> => ({
-          type: Message.Case.PERMISSION_GRANTED,
+          type: Message.Case.PERMIT_GRANTED,
           message: v1 as AmbiguousMsg<T>,
         })))
         .map(v => v.map(v1 => Try.success(v1)))
         .getOrElse(Observable.empty()),
 
-      Try.unwrap(this.suggestionReq[uid])
+      Try.unwrap(this.suggestReq[uid])
         .map(v => v.map((v1): GenericMsg<T> => ({
-            type: Message.Case.SUGGESTION,
-            message: v1 as AmbiguousMsg<T>,
+          type: Message.Case.SUGGESTION,
+          message: v1 as AmbiguousMsg<T>,
         })))
         .map(v => v.map(v1 => Try.success(v1)))
         .getOrElse(Observable.empty()),
 
-      Try.unwrap(this.nackPermitRes[uid])
+      Try.unwrap(this.nackRes[uid])
         .map(v => v.map((v1): GenericMsg<T> => ({
-          type: Message.Case.NACK_PERMISSION,
+          type: Message.Case.NACK,
           message: v1 as AmbiguousMsg<T>,
         })))
         .map(v => v.map(v1 => Try.success(v1)))
@@ -182,38 +177,71 @@ export class PaxosAPI<T> implements NodeAPI<T> {
   }
 
   public sendMessage(uid: string, msg: GenericMsg<T>) {
-    switch (msg.type) {
-      case Message.Case.PERMISSION_REQUEST:
-        let pRequest = <PRequestMsg>msg.message;
-        Try.unwrap(this.permissionReq[uid]).map(v => v.next(pRequest));
-        break;
+    return new Observable<Try<any>>(obs => {
+      switch (msg.type) {
+        case Message.Case.PERMIT_REQUEST:
+          let pRequest = <PRequestMsg>msg.message;
+          Try.unwrap(this.permitReq[uid]).map(v => v.next(pRequest));
+          obs.next(Try.success(undefined));
+          break;
 
-      case Message.Case.PERMISSION_GRANTED:
-        let pGranted = <Message.Permission.Granted.Type<T>>msg.message;
-        Try.unwrap(this.permissionGranted[uid]).map(v => v.next(pGranted));
-        break;
+        case Message.Case.PERMIT_GRANTED:
+          let pGranted = <Message.Permission.Granted.Type<T>>msg.message;
+          Try.unwrap(this.permitGranted[uid]).map(v => v.next(pGranted));
+          obs.next(Try.success(undefined));
+          break;
 
-      case Message.Case.SUGGESTION:
-        let suggestion = <SuggestMsg<T>>msg.message;
-        Try.unwrap(this.suggestionReq[uid]).map(v => v.next(suggestion));
-        break;
+        case Message.Case.SUGGESTION:
+          let suggestion = <SuggestMsg<T>>msg.message;
+          Try.unwrap(this.suggestReq[uid]).map(v => v.next(suggestion));
+          obs.next(Try.success(undefined));
+          break;
 
-      case Message.Case.NACK_PERMISSION:
-        let permissionNack = <NackPermitMsg>msg.message;
-        Try.unwrap(this.nackPermitRes[uid]).map(v => v.next(permissionNack));
-        break;
+        case Message.Case.NACK:
+          let permissionNack = <NackMsg>msg.message;
+          Try.unwrap(this.nackRes[uid]).map(v => v.next(permissionNack));
+          obs.next(Try.success(undefined));
+          break;
 
-      default:
-        return Observable.of(Try.failure(`Unhandled message type: ${msg.type}`));
-    }
+        default:
+          return obs.next(Try.failure(`Unhandled type: ${msg.type}`));
+      }
 
-    return Observable.of(Try.success(undefined));
+      obs.complete();
+    });
   }
 
   public broadcastMessage(msg: GenericMsg<T>): Observable<Try<any>> {
     return new Observable((obs: Subscriber<Try<any>>) => {
-      this.messageTriggers.forEach(v => v.next(msg));
-      obs.next(Try.success(undefined));
+      switch (msg.type) {
+        case Message.Case.PERMIT_REQUEST:
+          let permitReq = <PRequestMsg>msg.message;
+          Objects.entries(this.permitReq).forEach(v => v['1'].next(permitReq));
+          obs.next(Try.success(undefined));
+          break;
+
+        case Message.Case.PERMIT_GRANTED:
+          let pGranted = <PGrantedMsg<T>>msg.message;
+          Objects.entries(this.permitGranted).forEach(v => v['1'].next(pGranted));
+          obs.next(Try.success(undefined));
+          break;
+
+        case Message.Case.SUGGESTION:
+          let suggestReq = <SuggestMsg<T>>msg.message;
+          Objects.entries(this.suggestReq).forEach(v => v['1'].next(suggestReq));
+          obs.next(Try.success(undefined));
+          break;
+
+        case Message.Case.NACK:
+          let nackRes = <NackMsg>msg.message;
+          Objects.entries(this.nackRes).forEach(v => v['1'].next(nackRes));
+          obs.next(Try.success(undefined));
+          break;
+
+        default:
+          obs.next(Try.failure(`Unexpected type ${msg.type}`));
+      }
+
       obs.complete();
     });
   }
@@ -233,25 +261,41 @@ export class PaxosAPI<T> implements NodeAPI<T> {
 
   /// Suggester API.
   public getFirstSuggestionValue(_uid: string): Observable<Try<T>> {
-    return Try.unwrap(this.valueRandomizer)
-
-      .map(v => v())
-      .map(v => Observable.of(Try.success(v)))
-      .getOrThrow();
+    return new Observable<Try<T>>(obs => {
+      obs.next(Try.unwrap(this.valueRandomizer).map(v => v()));
+      obs.complete();
+    });
   }
 
   /// Voter API.
   public getLastGrantedSuggestionId(uid: string) {
-    return Observable.of(Try.unwrap(this.lastGrantedSuggestionId[uid]));
+    return new Observable<Try<SID.Type>>(obs => {
+      obs.next(Try.unwrap(this.lastGrantedSID[uid]));
+      obs.complete();
+    });
   }
 
   public storeLastGrantedSuggestionId(uid: string, sid: SID.Type) {
-    this.lastGrantedSuggestionId[uid] = sid;
-    return Observable.of(Try.success(undefined));
+    return new Observable<Try<any>>(obs => {
+      this.lastGrantedSID[uid] = sid;
+      obs.next(Try.success(undefined));
+      obs.complete();
+    });
   }
 
   public getLastAcceptedData(uid: string): Observable<Try<LastAccepted.Type<T>>> {
-    return Observable.of(Try.unwrap(this.lastAcceptedData[uid]));
+    return new Observable<Try<LastAcceptedData<T>>>(obs => {
+      obs.next(Try.unwrap(this.lastAcceptedData[uid]));
+      obs.complete();
+    });
+  }
+
+  public storeLastAcceptedData(uid: string, data: LastAcceptedData<T>) {
+    return new Observable<Try<any>>(obs => {
+      this.lastAcceptedData[uid] = data;
+      obs.next(Try.success(undefined));
+      obs.complete();
+    });
   }
 }
 

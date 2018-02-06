@@ -21,7 +21,7 @@ import {
   Value,
 } from './mockAPI';
 
-let timeout = 3000;
+let timeout = 5000;
 
 describe('Suggester should be implemented correctly', () => {
   let voterCount = 10;
@@ -41,7 +41,7 @@ describe('Suggester should be implemented correctly', () => {
     api = new PaxosAPI(MockAPI.valueRandomizer);
     config = new PaxosConfig();
     config.quorumSize = voterCount;
-    config.takeCutoff = 2000;
+    config.takeCutoff = 1000;
     suggesterId = uuid();
     voterIds = Numbers.range(0, voterCount).map(() => uuid());
     api.registerSuggesters(suggesterId);
@@ -65,10 +65,10 @@ describe('Suggester should be implemented correctly', () => {
       .toBeDisposedBy(subscription);
   });
 
-  it('Suggester receiving with no majority prior value - should suggest own value', done => {
+  it.only('Suggester receiving with no majority prior value - should suggest own value', done => {
     /// Setup
     let priorValue = MockAPI.rangeMax + 1;
-    let grantedSbj = Try.unwrap(api.permissionGranted[suggesterId]).getOrThrow();
+    let grantedSbj = Try.unwrap(api.permitGranted[suggesterId]).getOrThrow();
     let sid: SID.Type = { id: '0', integer: 1000 };
 
     let allResponses = [
@@ -80,7 +80,7 @@ describe('Suggester should be implemented correctly', () => {
       ...Numbers.range(0, minority).map(v => ({
         suggestionId: sid,
         lastAccepted: Try.success<LastAcceptedData<Value>>({
-          suggestionId: { id: uuid(), integer: v }, value: priorValue,
+          sid: { id: uuid(), integer: v }, value: priorValue,
         }),
       })),
     ];
@@ -101,20 +101,20 @@ describe('Suggester should be implemented correctly', () => {
         .doOnNext(v => expect(Collections.unique(v)).toHaveLength(1))
         .getOrThrow();
       done();
-    }, config.takeCutoff + 0.1);
+    }, config.takeCutoff + 500);
   }, timeout);
 
   it('Suggester receiving majority decided last value - should propose same value', () => {
     /// Setup
     let priorValue = MockAPI.rangeMax + 1;
-    let grantedSbj = Try.unwrap(api.permissionGranted[suggesterId]).getOrThrow();
+    let grantedSbj = Try.unwrap(api.permitGranted[suggesterId]).getOrThrow();
     let sid = { id: '0', integer: 1000 };
 
     let allResponses = [
       ...Numbers.range(0, majority).map(v => ({
         suggestionId: sid,
         lastAccepted: Try.success<LastAcceptedData<Value>>({
-          suggestionId: { id: uuid(), integer: v }, value: priorValue,
+          sid: { id: uuid(), integer: v }, value: priorValue,
         }),
       })),
 
@@ -136,22 +136,19 @@ describe('Suggester should be implemented correctly', () => {
         .map(v => v.map(v1 => v1.value))
         .doOnNext(v => expect(v.every(v1 => v1 === priorValue)).toBeTruthy())
         .getOrThrow();
-    }, config.takeCutoff + 0.1);
+    }, config.takeCutoff + 500);
   }, timeout);
 
   it('Suggester receiving majority NACKs - should retry with new SID', done => {
     /// Setup
-    let nackSbj = Try.unwrap(api.nackPermitRes[suggesterId]).getOrThrow();
+    let nackSbj = Try.unwrap(api.nackRes[suggesterId]).getOrThrow();
     let sid = { id: '0', integer: 1000 };
     let sids: SID.Type[] = [];
 
     let nacks = Numbers.range(0, majority)
-      .map((): Message.Nack.Permission.Type => ({
+      .map((): Message.Nack.Type => ({
         currentSID: sid,
-        lastGrantedSID: {
-          id: uuid(),
-          integer: Numbers.randomBetween(0, 10000),
-        },
+        lastGrantedSID: { id: uuid(), integer: Numbers.randomBetween(0, 10000) },
       }));
 
     let highestSID = SID.highestSID(nacks, v => v.lastGrantedSID).getOrThrow();
@@ -171,6 +168,6 @@ describe('Suggester should be implemented correctly', () => {
       expect(lastSID.id).toBe(highestSID.lastGrantedSID.id);
       expect(lastSID.integer).toBe(highestSID.lastGrantedSID.integer + 1);
       done();
-    }, config.takeCutoff + 0.1);
+    }, config.takeCutoff + 500);
   }, timeout);
 });

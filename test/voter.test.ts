@@ -62,19 +62,17 @@ describe('Voter should be implemented correctly', () => {
 
   it('Voter receiving logically lower proposal - should send nack', () => {
     /// Setup
-    let req1 = { senderId: suggesterUid, suggestionId: { id: '1', integer: 10 } };
-    let req2 = { senderId: suggesterUid, suggestionId: { id: '2', integer: 9 } };
-
-    let subject = Try.unwrap(api.permissionReq[voterUid]).getOrThrow();
-
-    subject.next(req1);
+    let req1 = { senderId: suggesterUid, sid: { id: '1', integer: 10 } };
+    let req2 = { senderId: suggesterUid, sid: { id: '2', integer: 9 } };
+    let subject = Try.unwrap(api.permitReq[voterUid]).getOrThrow();
 
     /// When
+    subject.next(req1);
     subject.next(req2);
 
     /// Then
     expect(Message.Permission.Granted.count(...suggesterMessages)).toBe(1);
-    expect(Message.Nack.Permission.count(...suggesterMessages)).toBe(1);
+    expect(Message.Nack.count(...suggesterMessages)).toBe(1);
     expect(Message.Permission.Request.count(...voterMessages)).toBe(2);
   });
 });

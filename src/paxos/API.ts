@@ -64,24 +64,6 @@ export namespace MajorityCalculator {
   };
 }
 
-export namespace Suggester {
-  /**
-   * Represents the APIs used by a suggester.
-   * @extends {Participant.Type<T>} Participant extension.
-   * @extends {MajorityCalculator.Type} Majority calculator extension.
-   * @template T Generics parameter.
-   */
-  export interface Type<T> extends Participant.Type<T>, MajorityCalculator.Type {
-    /**
-     * Get the first suggestion value that will be used if there has not been
-     * any accepted value yet.
-     * @param {string} uid The suggester's uid.
-     * @returns {Observable<Try<T>>} An Observable instance.
-     */
-    getFirstSuggestionValue(uid: string): Observable<Try<T>>;
-  }
-}
-
 export namespace RetryHandler {
   /**
    * Represents the APIs used to coordinate retry attempts.
@@ -156,6 +138,24 @@ export namespace RetryHandler {
   }
 }
 
+export namespace Suggester {
+  /**
+   * Represents the APIs used by a suggester.
+   * @extends {Participant.Type<T>} Participant extension.
+   * @extends {MajorityCalculator.Type} Majority calculator extension.
+   * @template T Generics parameter.
+   */
+  export interface Type<T> extends Participant.Type<T>, MajorityCalculator.Type {
+    /**
+     * Get the first suggestion value that will be used if there has not been
+     * any accepted value yet.
+     * @param {string} uid The suggester's uid.
+     * @returns {Observable<Try<T>>} An Observable instance.
+     */
+    getFirstSuggestionValue(uid: string): Observable<Try<T>>;
+  }
+}
+
 export namespace Voter {
   /**
    * Represents the APIs used by a voter.
@@ -165,14 +165,14 @@ export namespace Voter {
     /**
      * Retrieve the suggestion id of the last granted permission request. This
      * will be used by the voter to process new permission requests.
-     * @param {string} uid The voter's id.
+     * @param {string} uid The voter's uid.
      * @returns {Observable<Try<SId.Type>>} An Observable instance.
      */
     getLastGrantedSuggestionId(uid: string): Observable<Try<SId.Type>>;
 
     /**
      * Store the last accepted suggestion id in stable media.
-     * @param {string} uid The voter's id.
+     * @param {string} uid The voter's uid.
      * @param {SId.Type} obj A suggestion id instance.
      * @returns {Observable<Try<any>>} An Observable instance.
      */
@@ -180,11 +180,19 @@ export namespace Voter {
 
     /**
      * Retrieve the last accepted data.
-     * @param {string} uid The voter's id.
+     * @param {string} uid The voter's uid.
      * @returns {Observable<Try<Message.LastAccepted.Type<T>>>} An Observable
      * instance.
      */
     getLastAcceptedData(uid: string): Observable<Try<Message.LastAccepted.Type<T>>>;
+
+    /**
+     * Store that last accepted data.
+     * @param {string} uid The voter's uid.
+     * @param {Message.LastAccepted.Type<T>} obj A LastAccepted instance.
+     * @returns {Observable<Try<any>>} An Observable instance.
+     */
+    storeLastAcceptedData(uid: string, obj: Message.LastAccepted.Type<T>): Observable<Try<any>>;
   }
 }
 

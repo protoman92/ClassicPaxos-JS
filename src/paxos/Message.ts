@@ -12,6 +12,7 @@ import * as SID from './SuggestionId';
  * @returns {Try<T>} A Try instance.
  */
 function extractMessage<T, R>(msg: Generic.Type<R>, type: Case, ...keys: (keyof T)[]): Try<T> {
+  // console.log(msg.type, keys);
   switch (msg.type) {
     case type:
       let message = msg.message;
@@ -45,29 +46,29 @@ export namespace LastAccepted {
    * @template T Generic parameter.
    */
   export interface Type<T> {
-    readonly suggestionId: SID.Type;
+    readonly sid: SID.Type;
     readonly value: T;
   }
 }
 
 export namespace Permission {
   export namespace Request {
-    let keys: (keyof Type)[] = ['senderId', 'suggestionId'];
+    let keys: (keyof Type)[] = ['senderId', 'sid'];
 
     /**
      * Represents a permission request message.
      */
     export interface Type {
       readonly senderId: string;
-      readonly suggestionId: SID.Type;
+      readonly sid: SID.Type;
     }
 
     export function extract<T>(msg: Generic.Type<T>): Try<Type> {
-      return extractMessage<Type, T>(msg, Case.PERMISSION_REQUEST, ...keys);
+      return extractMessage<Type, T>(msg, Case.PERMIT_REQUEST, ...keys);
     }
 
     export function count<T>(...messages: Generic.Type<T>[]): number {
-      return countMessage(Case.PERMISSION_REQUEST, ...messages);
+      return countMessage(Case.PERMIT_REQUEST, ...messages);
     }
   }
 
@@ -84,24 +85,25 @@ export namespace Permission {
     }
 
     export function extract<T>(msg: Generic.Type<T>): Try<Type<T>> {
-      return extractMessage<Type<T>, T>(msg, Case.PERMISSION_GRANTED, ...keys);
+      return extractMessage<Type<T>, T>(msg, Case.PERMIT_GRANTED, ...keys);
     }
 
     export function count<T>(...messages: Generic.Type<T>[]): number {
-      return countMessage(Case.PERMISSION_GRANTED, ...messages);
+      return countMessage(Case.PERMIT_GRANTED, ...messages);
     }
   }
 }
 
 export namespace Suggestion {
-  let keys: (keyof Type<any>)[] = ['suggestionId', 'value'];
+  let keys: (keyof Type<any>)[] = ['senderId', 'sid', 'value'];
 
   /**
    * Represents a suggestion message.
    * @template T Generic parameter.
    */
   export interface Type<T> {
-    readonly suggestionId: SID.Type;
+    readonly senderId: string;
+    readonly sid: SID.Type;
     readonly value: T;
   }
 
@@ -118,30 +120,29 @@ export namespace Acceptance {
   /**
    * Represents an acceptance message.
    */
-  export interface Type {
-    suggestionId: SID.Type;
+  export interface Type<T> {
+    sid: SID.Type;
+    value: T;
   }
 }
 
 export namespace Nack {
-  export namespace Permission {
-    let keys: (keyof Type)[] = ['currentSID', 'lastGrantedSID'];
+  let keys: (keyof Type)[] = ['currentSID', 'lastGrantedSID'];
 
-    /**
-     * Represents a Nack message for a permission request.
-     */
-    export interface Type {
-      readonly currentSID: SID.Type;
-      readonly lastGrantedSID: SID.Type;
-    }
+  /**
+   * Represents a Nack message for a permission request.
+   */
+  export interface Type {
+    readonly currentSID: SID.Type;
+    readonly lastGrantedSID: SID.Type;
+  }
 
-    export function count<T>(...messages: Generic.Type<T>[]): number {
-      return countMessage(Case.NACK_PERMISSION, ...messages);
-    }
+  export function count<T>(...messages: Generic.Type<T>[]): number {
+    return countMessage(Case.NACK, ...messages);
+  }
 
-    export function extract<T>(message: Generic.Type<T>): Try<Type> {
-      return extractMessage<Type, T>(message, Case.NACK_PERMISSION, ...keys);
-    }
+  export function extract<T>(message: Generic.Type<T>): Try<Type> {
+    return extractMessage<Type, T>(message, Case.NACK, ...keys);
   }
 }
 
@@ -149,11 +150,11 @@ export namespace Nack {
  * Represents the different types of messages.
  */
 export enum Case {
-  PERMISSION_REQUEST = 'PERMISSION_REQUEST',
-  PERMISSION_GRANTED = 'PERMISSION_GRANTED',
+  PERMIT_REQUEST = 'PERMISSION_REQUEST',
+  PERMIT_GRANTED = 'PERMISSION_GRANTED',
   SUGGESTION = 'SUGGESTION',
   ACCEPTANCE = 'ACCEPTANCE',
-  NACK_PERMISSION = 'NACK',
+  NACK = 'NACK',
 }
 
 /// Represents an ambiguous message.
@@ -161,8 +162,8 @@ export type Ambiguous<T> =
   Permission.Request.Type |
   Permission.Granted.Type<T> |
   Suggestion.Type<T> |
-  Acceptance.Type |
-  Nack.Permission.Type;
+  Acceptance.Type<T> |
+  Nack.Type;
 
 export namespace Generic {
   /**
