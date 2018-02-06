@@ -1,3 +1,5 @@
+import { Try } from 'javascriptutilities';
+
 /**
  * Convert a suggestion id to a string value. This could be used for grouping
  * unique ids.
@@ -6,6 +8,16 @@
  */
 export let toString = (type: Type): string => {
   return `${type.id}-${type.integer}`;
+};
+
+/**
+ * Increment a suggestion id's integer value while keeping the same id.
+ * @param {Type} sid A Type instance.
+ * @param {number} [byValue=1] A number value, defaults to 1.
+ * @returns {Type} A Type instance.
+ */
+export let increment = (sid: Type, byValue: number = 1): Type => {
+  return { id: sid.id, integer: sid.integer + byValue };
 };
 
 /**
@@ -63,3 +75,20 @@ export let isLargerThan = (lhs: Type, rhs: Type): boolean => {
 export let takeHigher = (lhs: Type, rhs: Type): Type => {
   return isLargerThan(lhs, rhs) ? lhs : rhs;
 };
+
+/**
+ * Find the logically highest suggestion id.
+ * @template T Generics parameter.
+ * @param {T[]} obj Array of data, each of which contains a suggestionId.
+ * @param {(v: T) => Type} selector SuggestionId selector.
+ * @returns {Try<T>} A Try instance.
+ */
+export function highestSID<T>(obj: T[], selector: (v: T) => Type): Try<T> {
+  try {
+    return Try.unwrap(obj.reduce((v1, v2) => {
+      return isLargerThan(selector(v1), selector(v2)) ? v1 : v2;
+    }));
+  } catch (e) {
+    return Try.failure(e);
+  }
+}

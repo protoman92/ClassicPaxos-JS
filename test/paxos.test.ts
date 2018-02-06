@@ -65,7 +65,7 @@ class PaxosAPI<T> implements NodeAPI<T> {
   public permissionReq: JSObject<Subject<PRequestMsg>>;
   public permissionGranted: JSObject<Subject<PGrantedMsg<T>>>;
   public suggestionReq: JSObject<Subject<SuggestMsg<T>>>;
-  public nackRequestRes: JSObject<Subject<NackPermitMsg>>;
+  public nackPermitRes: JSObject<Subject<NackPermitMsg>>;
   public lastGrantedSuggestionId: JSObject<SID.Type>;
   public lastAcceptedData: JSObject<LastAccepted.Type<T>>;
   public errorSubject: JSObject<Subject<Error>>;
@@ -82,7 +82,7 @@ class PaxosAPI<T> implements NodeAPI<T> {
       ...mapObserverToGeneric(this.permissionReq),
       ...mapObserverToGeneric(this.permissionGranted),
       ...mapObserverToGeneric(this.suggestionReq),
-      ...mapObserverToGeneric(this.nackRequestRes),
+      ...mapObserverToGeneric(this.nackPermitRes),
     ];
   }
 
@@ -90,7 +90,7 @@ class PaxosAPI<T> implements NodeAPI<T> {
     this.permissionReq = {};
     this.permissionGranted = {};
     this.suggestionReq = {};
-    this.nackRequestRes = {};
+    this.nackPermitRes = {};
     this.lastGrantedSuggestionId = {};
     this.lastAcceptedData = {};
     this.errorSubject = {};
@@ -120,8 +120,8 @@ class PaxosAPI<T> implements NodeAPI<T> {
       this.permissionGranted,
       newPermissionGranted);
 
-    this.nackRequestRes = Object.assign({},
-      this.nackRequestRes,
+    this.nackPermitRes = Object.assign({},
+      this.nackPermitRes,
       newNackRequestResponse);
 
     this.registerParticipants(...suggesters);
@@ -173,7 +173,7 @@ class PaxosAPI<T> implements NodeAPI<T> {
         .map(v => v.map(v1 => Try.success(v1)))
         .getOrElse(Observable.empty()),
 
-      Try.unwrap(this.nackRequestRes[uid])
+      Try.unwrap(this.nackPermitRes[uid])
         .map(v => v.map((v1): GenericMsg<T> => ({
           type: Message.Case.NACK_PERMISSION,
           message: v1 as AmbiguousMsg<T>,
@@ -202,7 +202,7 @@ class PaxosAPI<T> implements NodeAPI<T> {
 
       case Message.Case.NACK_PERMISSION:
         let permissionNack = <NackPermitMsg>msg.message;
-        Try.unwrap(this.nackRequestRes[uid]).map(v => v.next(permissionNack));
+        Try.unwrap(this.nackPermitRes[uid]).map(v => v.next(permissionNack));
         break;
 
       default:
@@ -380,6 +380,32 @@ describe('Suggester should be implemented correctly', () => {
         .map(v => v.map(v1 => v1.value))
         .doOnNext(v => expect(v.every(v1 => v1 === priorValue)).toBeTruthy())
         .getOrThrow();
+    }, config.takeCutoff + 0.1);
+  });
+
+  it('Suggester receiving majority NACKs - should retry with new SID', done => {
+    /// Setup
+    let nackSbj = Try.unwrap(api.nackPermitRes[suggesterId]).getOrThrow();
+    let sid = { id: '0', integer: 1000 };
+
+    let nacks = Numbers.range(0, majority)
+      .map((): Message.Nack.Permission.Type => ({
+        currentSuggestionId: sid,
+        lastGrantedSuggestionId: {
+          id: uuid(),
+          integer: Numbers.randomBetween(0, 10000),
+        },
+      }));
+
+    // let highestSID = SID.highestSID(nacks, v => v.lastGrantedSuggestionId);
+
+    /// When
+    nacks.forEach(v => nackSbj.next(v));
+
+    /// Then
+    setTimeout(() => {
+      console.log(voterMessages);
+      done();
     }, config.takeCutoff + 0.1);
   });
 });

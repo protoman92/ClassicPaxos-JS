@@ -158,11 +158,33 @@ class Self<T> implements Type<T> {
 
       Observable
         .merge(
-          tryStream
-            .withLatestFrom(sidStream, (_v1, v2) => v2)
-            .mapNonNilOrElse<SID.Type>(v => v, { id: uid, integer: 0 }),
+          /// When we receive the majority of responses as NACKs, we need to
+          /// store the highest last granted suggestion id in order to request
+          /// permission with a higher SID the next time.
+          messageStream
+            .map(v => v.flatMap(v1 => Message.Nack.Permission.extract(v1)))
+            .mapNonNilOrEmpty(v => v)
+            .groupBy(v => SID.toString(v.currentSuggestionId))
+            .switchMap(v => v.takeUntil(Observable.timer(takeCutoff)).toArray())
+            .filter(v => v.length >= majority)
+            .map(v => SID.highestSID(v, v1 => v1.lastGrantedSuggestionId))
+            .map(v => v.map(v1 => v1.lastGrantedSuggestionId))
+            .mapNonNilOrEmpty(v => v),
         )
+        .map(v => SID.increment(v))
         .subscribe(this.sidTrigger())
+        .toBeDisposedBy(subscription);
+
+      /// When a new try effort is attempted, get a new SID and send a request
+      /// for permission.
+      tryStream
+        .withLatestFrom(sidStream, (_v1, v2) => v2)
+        .map(v => Try.unwrap(v, 'No prior suggestion id found'))
+        .mapNonNilOrElse<SID.Type>(v => v, { id: uid, integer: 0 })
+        .map(v => ({ senderId: uid, suggestionId: v }))
+        .map(v => ({ type: Message.Case.PERMISSION_REQUEST, message: v }))
+        .switchMap(v => api.broadcastMessage(v))
+        .subscribe()
         .toBeDisposedBy(subscription);
 
       Observable
@@ -205,7 +227,7 @@ class Self<T> implements Type<T> {
     return Try.success(messages)
       .map(v => Collections.flatMap(v.map(v1 => v1.lastAccepted)))
       .filter(v => v.length >= majority, v => `${v} has less than ${majority}`)
-      .flatMap(v => Message.LastAccepted.highestSuggestionId(...v))
+      .flatMap(v => SID.highestSID(v, v1 => v1.suggestionId))
       .map(v => Observable.of(Try.success(v.value)))
       .getOrElse(() => api.getFirstSuggestionValue(uid))
       .map(v => v.zipWith(sid, (a, b) => ({ suggestionId: b, value: a })))

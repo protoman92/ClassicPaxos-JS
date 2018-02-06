@@ -149,7 +149,7 @@ class Self<T> implements Type<T> {
           /// could certainly use some optimization at a later date.
           let nack: Message.Nack.Permission.Type = {
             currentSuggestionId: sid,
-            lastAcceptedSuggestionId: v.getOrThrow(),
+            lastGrantedSuggestionId: v.getOrThrow(),
           };
 
           return Observable.of<Message.Generic.Type<T>>({

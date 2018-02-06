@@ -1,5 +1,5 @@
 import { Observable } from 'rxjs';
-import { Numbers, Try } from 'javascriptutilities';
+import { Nullable, Numbers, Try } from 'javascriptutilities';
 import * as Message from './Message';
 import * as SId from './SuggestionId';
 
@@ -89,10 +89,11 @@ export namespace RetryHandler {
   export interface Type {
     /**
      * Listen to retry events and coordinate attempts using certain strategies.
-     * @param {Observable<any>} trigger An Observable instance.
-     * @returns {Observable<any>} An Observable instance.
+     * @template T Generic parameter.
+     * @param {Observable<T>} trigger An Observable instance.
+     * @returns {Observable<T>} An Observable instance.
      */
-    coordinateRetries(trigger: Observable<any>): Observable<any>;
+    coordinateRetries<T>(trigger: Observable<T>): Observable<T>;
   }
 
   export namespace Noop {
@@ -101,13 +102,15 @@ export namespace RetryHandler {
      * @implements {Type} Type implementation.
      */
     export class Self implements Type {
-      public coordinateRetries = (trigger: Observable<any>) => trigger;
+      public coordinateRetries<T>(trigger: Observable<T>) {
+        return trigger;
+      }
     }
   }
 
-  export namespace ExponentialBackoff {
+  export namespace IncrementalBackoff {
     /**
-     * Coordinate retries using exponential backoff strategy.
+     * Coordinate retries using incremental backoff strategy.
      * @implements {Type} Type implementation.
      */
     export class Self implements Type {
@@ -119,15 +122,30 @@ export namespace RetryHandler {
         this.multiple = multiple;
       }
 
-      public coordinateRetries = (trigger: Observable<any>): Observable<any> => {
-        let initialDelay = this.initialDelay;
+      /**
+       * Delay emission with increasingly larger values. Please do not use
+       * a trigger that emits undefined/null/void because they will be filtered
+       * out at the end of the stream.
+       * @template T Generic parameter.
+       * @param {Observable<T>} trigger Retry trigger.
+       * @returns {Observable<T>} An Observable instance.
+       */
+      public coordinateRetries<T>(trigger: Observable<T>): Observable<T> {
+        interface ScannedResult {
+          number: number;
+          value: Nullable<T>;
+        }
+
+        let t0 = this.initialDelay;
         let multiple = this.multiple;
+        let initial: ScannedResult = { number: -1, value: undefined };
 
         return trigger
-          .scan((acc, _v): number => acc + 1, 0)
-          .map(v => initialDelay * (multiple ** v))
-          .concatMap(v => Observable.timer(v))
-          .map(() => undefined);
+          .scan((acc, v) => ({ number: acc.number + 1, value: v }), initial)
+          .filter(v => v.value !== undefined && v.value !== null)
+          .map(v => ({ delay: t0 * (multiple ** v.number), value: v.value }))
+          .concatMap(v => Observable.timer(v.delay).map(() => v.value))
+          .mapNonNilOrEmpty(v => v);
       }
     }
   }
