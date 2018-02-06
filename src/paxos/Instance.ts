@@ -11,7 +11,7 @@ export function builder<T>(): Builder<T> {
  * @template T Generic parameter.
  */
 export interface Type<T> {
-  readonly arbiters: Arbiter.Type[];
+  readonly arbiters: Arbiter.Type<T>[];
   readonly suggesters: Suggester.Type<T>[];
   readonly voters: Voter.Type<T>[];
 }
@@ -22,11 +22,11 @@ export interface Type<T> {
  * @template T Generic parameter.
  */
 class Self<T> implements Type<T> {
-  public _arbiters: Arbiter.Type[];
+  public _arbiters: Arbiter.Type<T>[];
   public _suggesters: Suggester.Type<T>[];
   public _voters: Voter.Type<T>[];
 
-  public get arbiters(): Arbiter.Type[] {
+  public get arbiters(): Arbiter.Type<T>[] {
     return this._arbiters;
   }
 
@@ -74,20 +74,20 @@ export class Builder<T> {
 
   /**
    * Add an arbiter to the current Paxos instance.
-   * @param {Arbiter.Type} arbiter An Arbiter instance.
+   * @param {Arbiter.Type<T>} arbiter An Arbiter instance.
    * @returns {this} The current Builder instance.
    */
-  public addArbiter = (arbiter: Arbiter.Type): this => {
+  public addArbiter = (arbiter: Arbiter.Type<T>): this => {
     this.instance._arbiters.push(arbiter);
     return this;
   }
 
   /**
    * Set the arbiters for a Paxos instance.
-   * @param {...Arbiter.Type[]} arbiters An Array of arbiters.
+   * @param {...Arbiter.Type<T>[]} arbiters An Array of arbiters.
    * @returns {this} The current Builder instance.
    */
-  public withArbiters = (...arbiters: Arbiter.Type[]): this => {
+  public withArbiters = (...arbiters: Arbiter.Type<T>[]): this => {
     this.instance._arbiters = arbiters;
     return this;
   }

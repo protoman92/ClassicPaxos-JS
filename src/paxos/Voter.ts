@@ -19,7 +19,7 @@ export function builder<T>(): Builder<T> {
  * @param {Message.Case} type A message type instance.
  * @returns {boolean} A boolean value.
  */
-export let hasMessageType = (type: Message.Case): boolean => {
+export let supportsMessageType = (type: Message.Case): boolean => {
   switch (type) {
     case Message.Case.PERMIT_REQUEST:
     case Message.Case.SUGGESTION:
@@ -77,7 +77,7 @@ class Self<T> implements Type<T> {
       let api = this.api.getOrThrow();
 
       return api.receiveMessage(this.uid).filter(v => {
-        return v.map(v1 => hasMessageType(v1.type)).getOrElse(false);
+        return v.map(v1 => supportsMessageType(v1.type)).getOrElse(false);
       });
     } catch (e) {
       return Observable.of(Try.failure(e));

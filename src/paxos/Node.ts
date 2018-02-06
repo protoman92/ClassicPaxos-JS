@@ -13,21 +13,21 @@ export function builder<T>(): Builder<T> {
 
 /**
  * Represents a node that can perform all roles.
- * @extends {Arbiter.Type} Arbiter extension.
+ * @extends {Arbiter.Type<T>} Arbiter extension.
  * @extends {Suggester.Type<T>} Suggester extension.
  * @extends {Voter.Type<T>} Voter extension.
  * @template T Generic parameter.
  */
-export interface Type<T> extends Arbiter.Type, Suggester.Type<T>, Voter.Type<T> {}
+export interface Type<T> extends Arbiter.Type<T>, Suggester.Type<T>, Voter.Type<T> {}
 
 class Self<T> implements Type<T> {
   public _uid: string;
   public _config: Nullable<Config.Node.Type>;
-  public _arbiter: Nullable<Arbiter.Type>;
+  public _arbiter: Nullable<Arbiter.Type<T>>;
   public _suggester: Nullable<Suggester.Type<T>>;
   public _voter: Nullable<Voter.Type<T>>;
 
-  public get arbiter(): Try<Arbiter.Type> {
+  public get arbiter(): Try<Arbiter.Type<T>> {
     return Try.unwrap(this._arbiter, 'Missing arbiter');
   }
 
@@ -43,20 +43,17 @@ class Self<T> implements Type<T> {
     return this._uid;
   }
 
-  public get quorumSize(): number {
-    return this.config.map(v => v.quorumSize).getOrElse(0);
-  }
-
-  private get config(): Try<Config.Node.Type> {
-    return Try.unwrap(this._config, 'Missing config');
-  }
-
   public constructor() {
     this._uid = uuid();
   }
 
-  public calculateQuorumMajority = (): number => {
-    return this.suggester.map(v => v.calculateQuorumMajority()).getOrElse(0);
+  public arbiterMessageStream = (): Observable<Try<Message.Generic.Type<T>>> => {
+    try {
+      let arbiter = this.arbiter.getOrThrow();
+      return arbiter.arbiterMessageStream();
+    } catch (e) {
+      return Observable.of(Try.failure(e));
+    }
   }
 
   public tryPermissionTrigger = (): Observer<any> => {
@@ -119,10 +116,10 @@ export class Builder<T> {
 
   /**
    * Set the arbiter instance.
-   * @param {Nullable<Arbiter.Type>} arbiter An arbiter instance.
+   * @param {Nullable<Arbiter.Type<T>>} arbiter An arbiter instance.
    * @returns {this} The current Builder instance.
    */
-  public withArbiter = (arbiter: Nullable<Arbiter.Type>): this => {
+  public withArbiter = (arbiter: Nullable<Arbiter.Type<T>>): this => {
     this.node._arbiter = arbiter;
     return this;
   }

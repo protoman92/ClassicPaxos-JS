@@ -26,7 +26,7 @@ export function builder<T>(): Builder<T> {
  * @param {Message.Case} type A message type instance.
  * @returns {boolean} A boolean value.
  */
-export let hasMessageType = (type: Message.Case): boolean => {
+export let supportsMessageType = (type: Message.Case): boolean => {
   switch (type) {
     case Message.Case.PERMIT_GRANTED:
     case Message.Case.NACK:
@@ -49,8 +49,6 @@ export let hasMessageType = (type: Message.Case): boolean => {
  * @template T Generic parameter.
  */
 export interface Type<T> extends Participant.Type {
-  readonly quorumSize: number;
-  calculateQuorumMajority(): number;
   tryPermissionTrigger(): Observer<Nullable<SID.Type>>;
 
   /**
@@ -82,16 +80,16 @@ class Self<T> implements Type<T> {
     return this._uid;
   }
 
-  public get quorumSize(): number {
-    return this.config.map(v => v.quorumSize).getOrElse(0);
-  }
-
   public get api(): Try<SuggestAPI<T>> {
     return Try.unwrap(this._api, 'API for suggester not available');
   }
 
   private get config(): Try<SuggestConfig> {
     return Try.unwrap(this._config, 'Suggester config not set');
+  }
+
+  private get quorumSize(): number {
+    return this.config.map(v => v.quorumSize).getOrElse(0);
   }
 
   public constructor() {
@@ -101,7 +99,7 @@ class Self<T> implements Type<T> {
     this.subscription = new Subscription();
   }
 
-  public calculateQuorumMajority = (): number => {
+  private calculateQuorumMajority = (): number => {
     let qSize = this.quorumSize;
 
     return this.api
@@ -115,7 +113,7 @@ class Self<T> implements Type<T> {
       let api = this.api.getOrThrow();
 
       return api.receiveMessage(this.uid)
-        .filter(v => v.map(v1 => hasMessageType(v1.type)).getOrElse(false));
+        .filter(v => v.map(v1 => supportsMessageType(v1.type)).getOrElse(false));
     } catch (e) {
       return Observable.of(Try.failure(e));
     }

@@ -1,6 +1,8 @@
-export namespace Suggester {
+export namespace QuorumAware {
   /**
-   * Represents the config for a suggester.
+   * Represents the config for a quorum-aware object, i.e. objects that know
+   * enough information regarding the quorum of voters to make some decisions,
+   * such as suggesters/arbiters.
    */
   export interface Type {
     quorumSize: number;
@@ -13,15 +15,32 @@ export namespace Suggester {
   }
 }
 
+export namespace Arbiter {
+  /**
+   * Represents the config for an arbiter.
+   * @extends {QuorumAware.Type} QuorumAware extension.
+   */
+  export interface Type extends QuorumAware.Type {}
+}
+
+export namespace Suggester {
+  /**
+   * Represents the config for a suggester.
+   * @extends {QuorumAware.Type} QuorumAware extension.
+   */
+  export interface Type extends QuorumAware.Type {}
+}
+
 export namespace Node {
   export let builder = (): Builder => new Builder();
 
   /**
    * Represents the config for a node, which implements all the functionalities
    * of arbiter, suggester and voter.
+   * @extends {Arbiter.Type} Arbiter extension.
    * @extends {Suggester.Type} Suggester extension.
    */
-  export interface Type extends Suggester.Type {}
+  export interface Type extends Arbiter.Type, Suggester.Type {}
 
   /**
    * Represents the config for a node.

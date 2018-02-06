@@ -138,6 +138,16 @@ export namespace RetryHandler {
   }
 }
 
+export namespace Arbiter {
+  /**
+   * Represents the APIs used by an arbiter.
+   * @extends {Participant.Type<T>} Participant extension.
+   * @extends {MajorityCalculator.Type} Majority calculator extension.
+   * @template T Generic parameter.
+   */
+  export interface Type<T> extends Participant.Type<T>, MajorityCalculator.Type {}
+}
+
 export namespace Suggester {
   /**
    * Represents the APIs used by a suggester.

@@ -2,6 +2,7 @@ import { Observable, Subject, Subscriber } from 'rxjs';
 
 import {
   JSObject,
+  MappableObserver as MapObserver,
   Nullable,
   Numbers,
   Objects,
@@ -37,7 +38,11 @@ export let rangeMax = 100000;
 export let valueRandomizer = (): Value => Numbers.randomBetween(rangeMin, rangeMax);
 
 export function createNode<T>(uid: string, api: NodeAPI<T>, config: NodeConfig): Node.Type<T> {
-  let arbiter: Arbiter.Type = { uid };
+  let arbiter = Arbiter.builder<T>()
+    .withUID(uid)
+    .withAPI(api)
+    .withConfig(config)
+    .build();
 
   let suggester = Suggester.builder<T>()
     .withUID(uid)
@@ -69,6 +74,22 @@ export class PaxosAPI<T> implements NodeAPI<T> {
   public lastAcceptedData: JSObject<LastAccepted.Type<T>>;
   public errorSubject: JSObject<Subject<Error>>;
   public valueRandomizer: Nullable<() => T>;
+
+  public get allMessageStream(): Observable<GenericMsg<T>> {
+    function mapGeneric(obs: JSObject<Subject<AmbiguousMsg<T>>>, type: Message.Case) {
+      return Objects.entries(obs).map(v => v['1']).map(v => {
+        return v.map((v1): GenericMsg<T> => ({ type: type, message: v1 }));
+      });
+    }
+
+    return Observable.merge(
+      ...mapGeneric(this.permitReq, Message.Case.PERMIT_REQUEST),
+      ...mapGeneric(this.permitGranted, Message.Case.PERMIT_GRANTED),
+      ...mapGeneric(this.suggestReq, Message.Case.SUGGESTION),
+      ...mapGeneric(this.acceptReq, Message.Case.ACCEPTANCE),
+      ...mapGeneric(this.nackRes, Message.Case.NACK),
+    );
+  }
 
   public constructor(vRandomizer: () => T) {
     this.acceptReq = {};
@@ -166,6 +187,14 @@ export class PaxosAPI<T> implements NodeAPI<T> {
         .map(v => v.map(v1 => Try.success(v1)))
         .getOrElse(Observable.empty()),
 
+      Try.unwrap(this.acceptReq[uid])
+        .map(v => v.map((v1): GenericMsg<T> => ({
+          type: Message.Case.ACCEPTANCE,
+          message: v1 as AmbiguousMsg<T>,
+        })))
+        .map(v => v.map(v1 => Try.success(v1)))
+        .getOrElse(Observable.empty()),
+
       Try.unwrap(this.nackRes[uid])
         .map(v => v.map((v1): GenericMsg<T> => ({
           type: Message.Case.NACK,
@@ -194,6 +223,12 @@ export class PaxosAPI<T> implements NodeAPI<T> {
         case Message.Case.SUGGESTION:
           let suggestion = <SuggestMsg<T>>msg.message;
           Try.unwrap(this.suggestReq[uid]).map(v => v.next(suggestion));
+          obs.next(Try.success(undefined));
+          break;
+
+        case Message.Case.ACCEPTANCE:
+          let acceptance = <AcceptMsg<T>>msg.message;
+          Try.unwrap(this.acceptReq[uid]).map(v => v.next(acceptance));
           obs.next(Try.success(undefined));
           break;
 
@@ -229,6 +264,12 @@ export class PaxosAPI<T> implements NodeAPI<T> {
         case Message.Case.SUGGESTION:
           let suggestReq = <SuggestMsg<T>>msg.message;
           Objects.entries(this.suggestReq).forEach(v => v['1'].next(suggestReq));
+          obs.next(Try.success(undefined));
+          break;
+
+        case Message.Case.ACCEPTANCE:
+          let acceptance = <AcceptMsg<T>>msg.message;
+          Objects.entries(this.acceptReq).forEach(v => v['1'].next(acceptance));
           obs.next(Try.success(undefined));
           break;
 

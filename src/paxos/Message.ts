@@ -117,12 +117,18 @@ export namespace Suggestion {
 }
 
 export namespace Acceptance {
+  let keys: (keyof Type<any>)[] = ['sid', 'value'];
+
   /**
    * Represents an acceptance message.
    */
   export interface Type<T> {
     sid: SID.Type;
     value: T;
+  }
+
+  export function extract<T>(msg: Generic.Type<T>): Try<Type<T>> {
+    return extractMessage<Type<T>, T>(msg, Case.ACCEPTANCE, ...keys);
   }
 }
 

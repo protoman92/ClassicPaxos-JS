@@ -65,7 +65,7 @@ describe('Suggester should be implemented correctly', () => {
       .toBeDisposedBy(subscription);
   });
 
-  it.only('Suggester receiving with no majority prior value - should suggest own value', done => {
+  it('Suggester receiving with no majority prior value - should suggest own value', done => {
     /// Setup
     let priorValue = MockAPI.rangeMax + 1;
     let grantedSbj = Try.unwrap(api.permitGranted[suggesterId]).getOrThrow();
