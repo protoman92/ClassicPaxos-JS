@@ -133,7 +133,7 @@ class Self<T> implements Type<T> {
         /// If there was no last accepted suggestion id, proceed to grant
         /// permission. Otherwise, check if the last accepted id is logically
         /// less than the current suggestion id.
-        if (v.map(v1 => SID.isLargerThan(sid, v1)).getOrElse(true)) {
+        if (v.map(v1 => SID.higherThan(sid, v1)).getOrElse(true)) {
           return api.storeLastGrantedSuggestionId(uid, sid)
             .map(v1 => v1.getOrThrow())
             .flatMap(() => api.getLastAcceptedData(uid))

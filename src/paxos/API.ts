@@ -140,12 +140,17 @@ export namespace RetryHandler {
         let multiple = this.multiple;
         let initial: ScannedResult = { number: -1, value: undefined };
 
+        /// The only reason scanned result has Nullable<T> as value is because
+        /// of the initial scan seed. Since we will be filtering out that seed
+        /// anyway, it is guaranteed that the resulting value will be exactly
+        /// as emitted by the trigger, so we can do a force cast at the end of
+        /// the sequence.
         return trigger
           .scan((acc, v) => ({ number: acc.number + 1, value: v }), initial)
-          .filter(v => v.value !== undefined && v.value !== null)
+          .filter(v => v.number > -1)
           .map(v => ({ delay: t0 * (multiple ** v.number), value: v.value }))
           .concatMap(v => Observable.timer(v.delay).map(() => v.value))
-          .mapNonNilOrEmpty(v => v);
+          .map(v => <T>v);
       }
     }
   }

@@ -56,7 +56,7 @@ export class Self implements Type {
  * @param {Type} rhs A Type instance.
  * @returns {boolean} A boolean value.
  */
-export let isLargerThan = (lhs: Type, rhs: Type): boolean => {
+export let higherThan = (lhs: Type, rhs: Type): boolean => {
   if (lhs.integer > rhs.integer) {
     return true;
   } else if (lhs.integer === rhs.integer) {
@@ -67,13 +67,23 @@ export let isLargerThan = (lhs: Type, rhs: Type): boolean => {
 };
 
 /**
+ * Check if two suggestion ids are equal.
+ * @param {Type} lhs A Type instance.
+ * @param {Type} rhs A Type instance.
+ * @returns {boolean} A boolean value.
+ */
+export let equals = (lhs: Type, rhs: Type): boolean => {
+  return lhs.id === rhs.id && lhs.integer === rhs.integer;
+};
+
+/**
  * Take the logically higher suggestion id.
  * @param {Type} lhs A Type instance.
  * @param {Type} rhs A Type instance.
  * @returns {Type} A Type instance.
  */
 export let takeHigher = (lhs: Type, rhs: Type): Type => {
-  return isLargerThan(lhs, rhs) ? lhs : rhs;
+  return higherThan(lhs, rhs) ? lhs : rhs;
 };
 
 /**
@@ -86,7 +96,7 @@ export let takeHigher = (lhs: Type, rhs: Type): Type => {
 export function highestSID<T>(obj: T[], selector: (v: T) => Type): Try<T> {
   try {
     return Try.unwrap(obj.reduce((v1, v2) => {
-      return isLargerThan(selector(v1), selector(v2)) ? v1 : v2;
+      return higherThan(selector(v1), selector(v2)) ? v1 : v2;
     }));
   } catch (e) {
     return Try.failure(e);

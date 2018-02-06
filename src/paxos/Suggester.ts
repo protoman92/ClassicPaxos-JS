@@ -2,7 +2,6 @@ import {
   BehaviorSubject,
   Observable,
   Observer,
-  Subject,
   Subscription,
 } from 'rxjs';
 
@@ -39,6 +38,27 @@ export let hasMessageType = (type: Message.Case): boolean => {
 };
 
 /**
+ * Listen to a SID stream and ensure that only the highest SID (at any point in
+ * time) is emitted.
+ * @param {Observable<SID.Type>} sidStream The SID stream Observable.
+ * @returns An Observable instance.
+ */
+export let ensureHighestSID = (sidStream: Observable<SID.Type>) => {
+  interface ScannedRetry {
+    larger: boolean;
+    sid: Try<SID.Type>;
+  }
+
+  return sidStream
+    .scan((acc: ScannedRetry, sid): ScannedRetry => ({
+      larger: acc.sid.map(v1 => SID.higherThan(sid, v1)).getOrElse(true),
+      sid: Try.success(sid),
+    }), { larger: true, sid: Try.failure<SID.Type>('') })
+    .filter(v => v.larger)
+    .mapNonNilOrEmpty(v => v.sid);
+}
+
+/**
  * Represents a suggester. The suggester is responsible for:
  * - Sending the original permission request to suggest a value. It will then
  * either receive a permission granted or a nack message indicating that the
@@ -52,16 +72,16 @@ export let hasMessageType = (type: Message.Case): boolean => {
 export interface Type<T> extends Participant.Type {
   readonly quorumSize: number;
   calculateQuorumMajority(): number;
-  tryPermissionTrigger(): Observer<any>;
+  tryPermissionTrigger(): Observer<Nullable<SID.Type>>;
 
   /**
    * In a typical implementation, the retry stream will be supplied to another
    * retry manager that determines how and when often to retry. For e.g., an
    * exponential backoff-based retry mechanism may delay retry efforts longer
    * as the retry count increases.
-   * @returns {Observable<any>} An Observable instance.
+   * @returns {Observable<Nullable<SID.Type>>} An Observable instance.
    */
-  tryPermissionStream(): Observable<any>;
+  tryPermissionStream(): Observable<Nullable<SID.Type>>;
 
   suggesterMessageStream(): Observable<Try<Message.Generic.Type<T>>>;
 }
@@ -76,8 +96,7 @@ class Self<T> implements Type<T> {
   public _api: Nullable<SuggestAPI<T>>;
   public _config: Nullable<SuggestConfig>;
   public retryCoordinator: API.RetryHandler.Type;
-  private readonly suggestionIdSbj: BehaviorSubject<Nullable<SID.Type>>;
-  private readonly tryPermissionSbj: Subject<any>;
+  private readonly tryPermissionSbj: BehaviorSubject<Nullable<SID.Type>>;
   private readonly subscription: Subscription;
 
   public get uid(): string {
@@ -99,8 +118,7 @@ class Self<T> implements Type<T> {
   public constructor() {
     this._uid = uuid();
     this.retryCoordinator = new API.RetryHandler.Noop.Self();
-    this.suggestionIdSbj = new BehaviorSubject(undefined);
-    this.tryPermissionSbj = new Subject();
+    this.tryPermissionSbj = new BehaviorSubject(undefined);
     this.subscription = new Subscription();
   }
 
@@ -124,10 +142,13 @@ class Self<T> implements Type<T> {
     }
   }
 
-  public tryPermissionTrigger = (): Observer<any> => this.tryPermissionSbj;
-  public tryPermissionStream = (): Observable<any> => this.tryPermissionSbj;
-  private sidTrigger = (): Observer<Nullable<SID.Type>> => this.suggestionIdSbj;
-  private sidStream = (): Observable<Nullable<SID.Type>> => this.suggestionIdSbj;
+  public tryPermissionTrigger = (): Observer<Nullable<SID.Type>> => {
+    return this.tryPermissionSbj;
+  }
+
+  public tryPermissionStream = (): Observable<Nullable<SID.Type>> => {
+    return this.tryPermissionSbj.asObservable();
+  }
 
   public setupBindings(): void {
     try {
@@ -136,7 +157,6 @@ class Self<T> implements Type<T> {
       let uid = this.uid;
       let takeCutoff = config.takeCutoff;
       let subscription = this.subscription;
-      let sidStream = this.sidStream();
       let messageStream = api.receiveMessage(uid).shareReplay(1);
       let majority = this.calculateQuorumMajority();
 
@@ -156,8 +176,14 @@ class Self<T> implements Type<T> {
         .coordinateRetries(this.tryPermissionStream())
         .shareReplay(1);
 
-      Observable
+      /// We perform a scan before depositing a new SID to the try trigger in
+      /// order to filter out SIDs that are smaller than the current SID.
+      let sidStream = Observable
         .merge(
+          grantedStream.filter(v => v.length < majority)
+            .withLatestFrom(tryStream, (_v1, v2) => v2)
+            .mapNonNilOrEmpty(v => v),
+
           /// When we receive the majority of responses as NACKs, we need to
           /// store the highest last granted suggestion id in order to request
           /// permission with a higher SID the next time.
@@ -170,26 +196,22 @@ class Self<T> implements Type<T> {
             .map(v => SID.highestSID(v, v1 => v1.lastGrantedSuggestionId))
             .map(v => v.map(v1 => v1.lastGrantedSuggestionId))
             .mapNonNilOrEmpty(v => v),
-        )
+        );
+
+      /// Increment the current SID to be the new SID for a permission request.
+      ensureHighestSID(sidStream)
         .map(v => SID.increment(v))
-        .subscribe(this.sidTrigger())
+        .subscribe(this.tryPermissionTrigger())
         .toBeDisposedBy(subscription);
 
       /// When a new try effort is attempted, get a new SID and send a request
       /// for permission.
       tryStream
-        .withLatestFrom(sidStream, (_v1, v2) => v2)
-        .map(v => Try.unwrap(v, 'No prior suggestion id found'))
         .mapNonNilOrElse<SID.Type>(v => v, { id: uid, integer: 0 })
         .map(v => ({ senderId: uid, suggestionId: v }))
         .map(v => ({ type: Message.Case.PERMISSION_REQUEST, message: v }))
         .switchMap(v => api.broadcastMessage(v))
         .subscribe()
-        .toBeDisposedBy(subscription);
-
-      Observable
-        .merge(grantedStream.filter(v => v.length < majority))
-        .subscribe(this.tryPermissionTrigger())
         .toBeDisposedBy(subscription);
 
       Observable
