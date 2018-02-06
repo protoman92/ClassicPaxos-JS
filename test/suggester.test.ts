@@ -1,4 +1,4 @@
-import { Observable, Subject, Subscription } from 'rxjs';
+import { Observable, Subscription } from 'rxjs';
 import * as uuid from 'uuid';
 import { Collections, Numbers, Try } from 'javascriptutilities';
 
@@ -21,39 +21,7 @@ import {
   Value,
 } from './mockAPI';
 
-describe('Suggester utilities should be implemented correctly', () => {
-  let timeout = 3000;
-
-  it('Suggester\'s ensureHighestSID should be implemented correctly', done => {
-    /// Setup
-    let times = 10;
-    let sidTrigger = new Subject<SID.Type>();
-    let subscription = new Subscription();
-    let sids: SID.Type[] = [];
-
-    Suggester.ensureHighestSID(sidTrigger)
-      .doOnNext(v => sids.push(v))
-      .subscribe()
-      .toBeDisposedBy(subscription);
-
-    /// When
-    Numbers.range(0, times).forEach(() => {
-      let randomValue = Numbers.randomBetween(0, 100000);
-      let randomSID = { id: '' + randomValue, integer: randomValue };
-      sidTrigger.next(randomSID);
-    });
-
-    /// Then
-    setTimeout(() => {
-      let sortedSids = sids.sort((a, b) => SID.higherThan(a, b) ? 1 : -1);
-      let equals = Collections.zip(sids, sortedSids, (a, b) => SID.equals(a, b));
-      expect(sids.length).toBeGreaterThan(0);
-      expect(sids).toEqual(sortedSids);
-      expect(equals.getOrThrow().every(v => v)).toBeTruthy();
-      done();
-    }, 2000);
-  }, timeout);
-});
+let timeout = 3000;
 
 describe('Suggester should be implemented correctly', () => {
   let voterCount = 10;
@@ -134,7 +102,7 @@ describe('Suggester should be implemented correctly', () => {
         .getOrThrow();
       done();
     }, config.takeCutoff + 0.1);
-  });
+  }, timeout);
 
   it('Suggester receiving majority decided last value - should propose same value', () => {
     /// Setup
@@ -169,31 +137,40 @@ describe('Suggester should be implemented correctly', () => {
         .doOnNext(v => expect(v.every(v1 => v1 === priorValue)).toBeTruthy())
         .getOrThrow();
     }, config.takeCutoff + 0.1);
-  });
+  }, timeout);
 
   it('Suggester receiving majority NACKs - should retry with new SID', done => {
     /// Setup
     let nackSbj = Try.unwrap(api.nackPermitRes[suggesterId]).getOrThrow();
     let sid = { id: '0', integer: 1000 };
+    let sids: SID.Type[] = [];
 
     let nacks = Numbers.range(0, majority)
       .map((): Message.Nack.Permission.Type => ({
-        currentSuggestionId: sid,
-        lastGrantedSuggestionId: {
+        currentSID: sid,
+        lastGrantedSID: {
           id: uuid(),
           integer: Numbers.randomBetween(0, 10000),
         },
       }));
 
-    // let highestSID = SID.highestSID(nacks, v => v.lastGrantedSuggestionId);
+    let highestSID = SID.highestSID(nacks, v => v.lastGrantedSID).getOrThrow();
+
+    suggester.tryPermissionStream()
+      .mapNonNilOrEmpty(v => v)
+      .doOnNext(v => sids.push(v))
+      .subscribe()
+      .toBeDisposedBy(subscription);
 
     /// When
     nacks.forEach(v => nackSbj.next(v));
 
     /// Then
     setTimeout(() => {
-      console.log(voterMessages);
+      let lastSID = Collections.last(sids).getOrThrow();
+      expect(lastSID.id).toBe(highestSID.lastGrantedSID.id);
+      expect(lastSID.integer).toBe(highestSID.lastGrantedSID.integer + 1);
       done();
     }, config.takeCutoff + 0.1);
-  });
+  }, timeout);
 });

@@ -6,7 +6,7 @@ import {
 } from 'rxjs';
 
 import * as uuid from 'uuid';
-import { Collections, Nullable, Try } from 'javascriptutilities';
+import { Collections, Nullable, Reactives, Try } from 'javascriptutilities';
 import * as API from './API';
 import * as Config from './Config';
 import * as Message from './Message';
@@ -36,27 +36,6 @@ export let hasMessageType = (type: Message.Case): boolean => {
       return false;
   }
 };
-
-/**
- * Listen to a SID stream and ensure that only the highest SID (at any point in
- * time) is emitted.
- * @param {Observable<SID.Type>} sidStream The SID stream Observable.
- * @returns An Observable instance.
- */
-export let ensureHighestSID = (sidStream: Observable<SID.Type>) => {
-  interface ScannedRetry {
-    larger: boolean;
-    sid: Try<SID.Type>;
-  }
-
-  return sidStream
-    .scan((acc: ScannedRetry, sid): ScannedRetry => ({
-      larger: acc.sid.map(v1 => SID.higherThan(sid, v1)).getOrElse(true),
-      sid: Try.success(sid),
-    }), { larger: true, sid: Try.failure<SID.Type>('') })
-    .filter(v => v.larger)
-    .mapNonNilOrEmpty(v => v.sid);
-}
 
 /**
  * Represents a suggester. The suggester is responsible for:
@@ -178,28 +157,27 @@ class Self<T> implements Type<T> {
 
       /// We perform a scan before depositing a new SID to the try trigger in
       /// order to filter out SIDs that are smaller than the current SID.
-      let sidStream = Observable
-        .merge(
-          grantedStream.filter(v => v.length < majority)
-            .withLatestFrom(tryStream, (_v1, v2) => v2)
-            .mapNonNilOrEmpty(v => v),
+      let sidStream = Observable.merge(
+        grantedStream.filter(v => v.length < majority)
+          .withLatestFrom(tryStream, (_v1, v2) => v2)
+          .mapNonNilOrEmpty(v => v),
 
-          /// When we receive the majority of responses as NACKs, we need to
-          /// store the highest last granted suggestion id in order to request
-          /// permission with a higher SID the next time.
-          messageStream
-            .map(v => v.flatMap(v1 => Message.Nack.Permission.extract(v1)))
-            .mapNonNilOrEmpty(v => v)
-            .groupBy(v => SID.toString(v.currentSuggestionId))
-            .switchMap(v => v.takeUntil(Observable.timer(takeCutoff)).toArray())
-            .filter(v => v.length >= majority)
-            .map(v => SID.highestSID(v, v1 => v1.lastGrantedSuggestionId))
-            .map(v => v.map(v1 => v1.lastGrantedSuggestionId))
-            .mapNonNilOrEmpty(v => v),
-        );
+        /// When we receive the majority of responses as NACKs, we need to
+        /// store the highest last granted suggestion id in order to request
+        /// permission with a higher SID the next time.
+        messageStream
+          .map(v => v.flatMap(v1 => Message.Nack.Permission.extract(v1)))
+          .mapNonNilOrEmpty(v => v)
+          .groupBy(v => SID.toString(v.currentSID))
+          .switchMap(v => v.takeUntil(Observable.timer(takeCutoff)).toArray())
+          .filter(v => v.length >= majority)
+          .map(v => SID.highestSID(v, v1 => v1.lastGrantedSID))
+          .map(v => v.map(v1 => v1.lastGrantedSID))
+          .mapNonNilOrEmpty(v => v),
+      );
 
       /// Increment the current SID to be the new SID for a permission request.
-      ensureHighestSID(sidStream)
+      Reactives.ensureOrder(sidStream, (a, b) => SID.higherThan(a, b))
         .map(v => SID.increment(v))
         .subscribe(this.tryPermissionTrigger())
         .toBeDisposedBy(subscription);
@@ -207,7 +185,7 @@ class Self<T> implements Type<T> {
       /// When a new try effort is attempted, get a new SID and send a request
       /// for permission.
       tryStream
-        .mapNonNilOrElse<SID.Type>(v => v, { id: uid, integer: 0 })
+        .mapNonNilOrElse(v => v, { id: uid, integer: 0 })
         .map(v => ({ senderId: uid, suggestionId: v }))
         .map(v => ({ type: Message.Case.PERMISSION_REQUEST, message: v }))
         .switchMap(v => api.broadcastMessage(v))

@@ -8,10 +8,10 @@ import * as SID from './SuggestionId';
  * @template R Generic parameter.
  * @param {Generic.Type<R>} msg A Generic message.
  * @param {Case} type A Case instance.
- * @param {...string[]} keys The property keys to check for type conformance.
+ * @param {...(keyof T)[]} keys The property keys to check for type conformance.
  * @returns {Try<T>} A Try instance.
  */
-function extractMessage<T, R>(msg: Generic.Type<R>, type: Case, ...keys: string[]): Try<T> {
+function extractMessage<T, R>(msg: Generic.Type<R>, type: Case, ...keys: (keyof T)[]): Try<T> {
   switch (msg.type) {
     case type:
       let message = msg.message;
@@ -52,7 +52,7 @@ export namespace LastAccepted {
 
 export namespace Permission {
   export namespace Request {
-    let keys = ['senderId', 'suggestionId'];
+    let keys: (keyof Type)[] = ['senderId', 'suggestionId'];
 
     /**
      * Represents a permission request message.
@@ -72,7 +72,7 @@ export namespace Permission {
   }
 
   export namespace Granted {
-    let keys = ['suggestionId', 'lastAccepted'];
+    let keys: (keyof Type<any>)[] = ['suggestionId', 'lastAccepted'];
 
     /**
      * Represents a permission granted message.
@@ -94,7 +94,7 @@ export namespace Permission {
 }
 
 export namespace Suggestion {
-  let keys = ['suggestionId', 'value'];
+  let keys: (keyof Type<any>)[] = ['suggestionId', 'value'];
 
   /**
    * Represents a suggestion message.
@@ -125,14 +125,14 @@ export namespace Acceptance {
 
 export namespace Nack {
   export namespace Permission {
-    let keys = ['currentSuggestionId', 'lastGrantedSuggestionId'];
+    let keys: (keyof Type)[] = ['currentSID', 'lastGrantedSID'];
 
     /**
      * Represents a Nack message for a permission request.
      */
     export interface Type {
-      readonly currentSuggestionId: SID.Type;
-      readonly lastGrantedSuggestionId: SID.Type;
+      readonly currentSID: SID.Type;
+      readonly lastGrantedSID: SID.Type;
     }
 
     export function count<T>(...messages: Generic.Type<T>[]): number {

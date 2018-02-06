@@ -148,8 +148,8 @@ class Self<T> implements Type<T> {
           /// under no circumstances will it actually throw an error. This
           /// could certainly use some optimization at a later date.
           let nack: Message.Nack.Permission.Type = {
-            currentSuggestionId: sid,
-            lastGrantedSuggestionId: v.getOrThrow(),
+            currentSID: sid,
+            lastGrantedSID: v.getOrThrow(),
           };
 
           return Observable.of<Message.Generic.Type<T>>({
