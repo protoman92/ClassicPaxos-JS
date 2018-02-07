@@ -22,10 +22,10 @@ describe('Voter should be implemented correctly', () => {
   let api: PaxosAPI<Value>;
   let config: NodeConfig;
   let suggester: Suggester.Type<Value>;
-  let suggesterUid: string;
+  let suggesterId: string;
   let suggesterMessages: GenericMsg<Value>[];
   let voter: Voter.Type<Value>;
-  let voterUid: string;
+  let voterId: string;
   let voterMessages: GenericMsg<Value>[];
   let subscription: Subscription;
 
@@ -37,15 +37,17 @@ describe('Voter should be implemented correctly', () => {
       .withTakeCutoff(1)
       .build();
 
-    suggesterUid = uuid();
-    voterUid = uuid();
-    api.registerSuggesters(suggesterUid);
-    api.registerVoters(voterUid);
-    suggester = MockAPI.createNode(suggesterUid, api, config);
+    suggesterId = uuid();
+    suggester = MockAPI.createNode(suggesterId, api, config);
     suggesterMessages = [];
-    voter = MockAPI.createNode(voterUid, api, config);
+    voterId = uuid();
+    voter = MockAPI.createNode(voterId, api, config);
     voterMessages = [];
     subscription = new Subscription();
+
+    api.registerSuggesters(suggester);
+    api.registerVoters(voter);
+    [suggester, voter].forEach(v => v.setupBindings());
 
     suggester.suggesterMessageStream()
       .mapNonNilOrEmpty(v => v)
@@ -62,9 +64,9 @@ describe('Voter should be implemented correctly', () => {
 
   it('Voter receiving logically lower proposal - should send nack', () => {
     /// Setup
-    let req1 = { senderId: suggesterUid, sid: { id: '1', integer: 10 } };
-    let req2 = { senderId: suggesterUid, sid: { id: '2', integer: 9 } };
-    let subject = Try.unwrap(api.permitReq[voterUid]).getOrThrow();
+    let req1 = { senderId: suggesterId, sid: { id: '1', integer: 10 } };
+    let req2 = { senderId: suggesterId, sid: { id: '2', integer: 9 } };
+    let subject = Try.unwrap(api.permitReq[voterId]).getOrThrow();
 
     /// When
     subject.next(req1);

@@ -47,6 +47,16 @@ class Self<T> implements Type<T> {
     this._uid = uuid();
   }
 
+  public setupBindings = (): void => {
+    try {
+      this.arbiter.getOrThrow().setupBindings();
+      this.suggester.getOrThrow().setupBindings();
+      this.voter.getOrThrow().setupBindings();
+    } catch (e) {
+      throw e;
+    }
+  }
+
   public arbiterMessageStream = (): Observable<Try<Message.Generic.Type<T>>> => {
     try {
       let arbiter = this.arbiter.getOrThrow();

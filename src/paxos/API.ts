@@ -235,9 +235,10 @@ export namespace Node {
   /**
    * Represents the APIs usable by a Node. This encompasses all APIs available
    * to arbiters, suggesters and voters.
+   * @extends {Arbiter.Type<T>} Arbiter API extension.
    * @extends {Suggester.Type<T>} Suggester API extension.
    * @extends {Voter.Type<T>} Voter API extension.
    * @template T Generics parameter.
    */
-  export interface Type<T> extends Suggester.Type<T>, Voter.Type<T> {}
+  export interface Type<T> extends Arbiter.Type<T>, Suggester.Type<T>, Voter.Type<T> {}
 }

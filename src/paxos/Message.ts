@@ -132,6 +132,23 @@ export namespace Acceptance {
   }
 }
 
+export namespace Success {
+  let keys: (keyof Type<any>)[] = ['value'];
+
+  /**
+   * Represents a success message that will be sent to all suggesters once a
+   * final value is declared.
+   * @template T Generic parameter.
+   */
+  export interface Type<T> {
+    value: T;
+  }
+
+  export function extract<T>(msg: Generic.Type<T>): Try<Type<T>> {
+    return extractMessage<Type<T>, T>(msg, Case.SUCCESS, ...keys);
+  }
+}
+
 export namespace Nack {
   let keys: (keyof Type)[] = ['currentSID', 'lastGrantedSID'];
 
@@ -160,6 +177,7 @@ export enum Case {
   PERMIT_GRANTED = 'PERMISSION_GRANTED',
   SUGGESTION = 'SUGGESTION',
   ACCEPTANCE = 'ACCEPTANCE',
+  SUCCESS = 'SUCCESS',
   NACK = 'NACK',
 }
 
@@ -169,6 +187,7 @@ export type Ambiguous<T> =
   Permission.Granted.Type<T> |
   Suggestion.Type<T> |
   Acceptance.Type<T> |
+  Success.Type<T> |
   Nack.Type;
 
 export namespace Generic {

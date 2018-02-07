@@ -29,6 +29,7 @@ export function builder<T>(): Builder<T> {
 export let supportsMessageType = (type: Message.Case): boolean => {
   switch (type) {
     case Message.Case.PERMIT_GRANTED:
+    case Message.Case.SUCCESS:
     case Message.Case.NACK:
       return true;
 
@@ -163,6 +164,12 @@ class Self<T> implements Type<T> {
         .transform(v => groupMessages(v, v1 => v1.sid, takeCutoff))
         .shareReplay(1);
 
+      /// When a final value is declared, cease all proposals.
+      let successStream = messageStream
+        .map(v => v.flatMap(v1 => Message.Success.extract(v1)))
+        .mapNonNilOrEmpty(v => v)
+        .shareReplay(1);
+
       let tryStream = this.retryCoordinator
         .coordinateRetries(this.tryPermissionStream())
         .shareReplay(1);
@@ -199,6 +206,7 @@ class Self<T> implements Type<T> {
         .map((v): Message.Permission.Request.Type => ({ senderId: uid, sid: v }))
         .map((v) => ({ type: Message.Case.PERMIT_REQUEST, message: v }))
         .switchMap(v => api.broadcastMessage(v))
+        .takeUntil(successStream)
         .subscribe()
         .toBeDisposedBy(subscription);
 
@@ -299,8 +307,5 @@ export class Builder<T> {
     return this;
   }
 
-  public build = (): Type<T> => {
-    this.suggester.setupBindings();
-    return this.suggester;
-  }
+  public build = (): Type<T> => this.suggester;
 }

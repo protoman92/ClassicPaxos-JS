@@ -218,8 +218,5 @@ export class Builder<T> {
     return this;
   }
 
-  public build = (): Type<T> => {
-    this.voter.setupBindings();
-    return this.voter;
-  }
+  public build = (): Type<T> => this.voter;
 }

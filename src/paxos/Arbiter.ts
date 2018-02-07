@@ -101,20 +101,22 @@ class Self<T> implements Type<T> {
       let subscription = this.subscription;
       let messageStream = this.arbiterMessageStream().shareReplay(1);
 
+      /// Only take the first accepted value.
       let declareStream = messageStream
         .map(v => v.flatMap(v1 => Message.Acceptance.extract(v1)))
         .mapNonNilOrEmpty(v => v)
         .groupBy(v => `${SID.toString(v.sid)}-${api.stringifyValue(v.value)}`)
         .flatMap(v => v.take(majority).toArray()
           .map(v1 => Collections.first(v1).map(v2 => v2.value))
-          .map(v1 => v1.getOrThrow())
-          .flatMap(v1 => api.declareFinalValue(v1))
-          .catchJustReturn(e => Try.failure(e)))
+          .mapNonNilOrEmpty(v1 => v1)).take(1)
+        .flatMap(v => api.declareFinalValue(v).map(v1 => v1.map(() => v)))
         .shareReplay(1);
 
-      /// Terminate the stream when a final value has been successfully declared.
       declareStream
-        .filter(v => v.isSuccess()).take(1)
+        .mapNonNilOrEmpty(v => v)
+        .map((v): Message.Success.Type<T> => ({ value: v }))
+        .map(v => ({ type: Message.Case.SUCCESS, message: v }))
+        .flatMap(v => api.broadcastMessage(v))
         .subscribe()
         .toBeDisposedBy(subscription);
 
@@ -173,8 +175,5 @@ export class Builder<T> {
     return this;
   }
 
-  public build = (): Type<T> => {
-    this.arbiter.setupBindings();
-    return this.arbiter;
-  }
+  public build = (): Type<T> => this.arbiter;
 }

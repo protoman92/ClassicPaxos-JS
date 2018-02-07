@@ -21,7 +21,7 @@ import {
   Value,
 } from './mockAPI';
 
-let timeout = 5000;
+let timeout = 10000;
 
 describe('Suggester utilities should be implemented correctly', () => {
   let subscription: Subscription;
@@ -86,14 +86,16 @@ describe('Suggester should be implemented correctly', () => {
     config.quorumSize = voterCount;
     config.takeCutoff = 1000;
     suggesterId = uuid();
-    voterIds = Numbers.range(0, voterCount).map(() => uuid());
-    api.registerSuggesters(suggesterId);
-    api.registerVoters(...voterIds);
     suggester = MockAPI.createNode(suggesterId, api, config);
     suggesterMessages = [];
+    voterIds = Numbers.range(0, voterCount).map(() => uuid());
     voters = voterIds.map(v => MockAPI.createNode(v, api, config));
     voterMessages = [];
     subscription = new Subscription();
+
+    api.registerSuggesters(suggester);
+    api.registerVoters(...voters);
+    [suggester, ...voters].forEach(v => v.setupBindings());
 
     suggester.suggesterMessageStream()
       .mapNonNilOrEmpty(v => v)
@@ -208,5 +210,32 @@ describe('Suggester should be implemented correctly', () => {
       expect(lastSID.integer).toBe(highestSID.lastGrantedSID.integer + 1);
       done();
     }, config.takeCutoff + 500);
+  }, timeout);
+
+  it('Suggester receiving success messages - should stop retrying', done => {
+    /// Setup
+    let successSbj = Try.unwrap(api.successRes[suggesterId]).getOrThrow();
+    let permitReqCount = 0;
+
+    /// When && Then
+    Observable.interval(1)
+      .map((v): SID.Type => ({ id: '' + v, integer: v }))
+      .subscribe(suggester.tryPermissionTrigger())
+      .toBeDisposedBy(subscription);
+
+    voters[0].voterMessageStream()
+      .mapNonNilOrEmpty(v => v)
+      .filter(v => v.type === Message.Case.PERMIT_REQUEST)
+      .doOnNext(() => permitReqCount += 1)
+      .timeInterval()
+      .map(v => v.interval)
+      .filter(v => v > 100)
+      .timeoutWith(500, Observable.empty())
+      .doOnCompleted(() => expect(permitReqCount).toBeGreaterThan(0))
+      .doOnCompleted(() => done())
+      .subscribe()
+      .toBeDisposedBy(subscription);
+
+    setTimeout(() => successSbj.next({ value: 0 }), 1000);
   }, timeout);
 });

@@ -7,5 +7,10 @@ export namespace Participant {
      * Unique id to distinguish different participants.
      */
     uid: string;
+
+    /**
+     * Setup reactive bindings for message handling.
+     */
+    setupBindings(): void;
   }
 }
