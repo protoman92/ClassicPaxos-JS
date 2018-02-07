@@ -48,7 +48,7 @@
       "class": true,
       "enum": true,
       "function": true,
-      "interface": true,
+      "interface": false,
       "namespace": false,
       "typeAlias": true,
       "typeParameter": true

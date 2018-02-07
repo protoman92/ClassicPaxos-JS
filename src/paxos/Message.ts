@@ -73,14 +73,14 @@ export namespace Permission {
   }
 
   export namespace Granted {
-    let keys: (keyof Type<any>)[] = ['suggestionId', 'lastAccepted'];
+    let keys: (keyof Type<any>)[] = ['sid', 'lastAccepted'];
 
     /**
      * Represents a permission granted message.
      * @template T Generic parameter.
      */
     export interface Type<T> {
-      readonly suggestionId: SID.Type;
+      readonly sid: SID.Type;
       readonly lastAccepted: Try<LastAccepted.Type<T>>;
     }
 

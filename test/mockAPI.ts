@@ -2,7 +2,6 @@ import { Observable, Subject, Subscriber } from 'rxjs';
 
 import {
   JSObject,
-  MappableObserver as MapObserver,
   Nullable,
   Numbers,
   Objects,
@@ -74,6 +73,7 @@ export class PaxosAPI<T> implements NodeAPI<T> {
   public lastAcceptedData: JSObject<LastAccepted.Type<T>>;
   public errorSubject: JSObject<Subject<Error>>;
   public valueRandomizer: Nullable<() => T>;
+  private finalValue: Nullable<T>;
 
   public get allMessageStream(): Observable<GenericMsg<T>> {
     function mapGeneric(obs: JSObject<Subject<AmbiguousMsg<T>>>, type: Message.Case) {
@@ -296,6 +296,19 @@ export class PaxosAPI<T> implements NodeAPI<T> {
         obs.next(Try.failure(e));
       }
 
+      obs.complete();
+    });
+  }
+
+  /// Arbiter API
+  public stringifyValue(value: T): string {
+    return '' + value;
+  }
+
+  public declareFinalValue(value: T): Observable<Try<any>> {
+    return new Observable<Try<any>>(obs => {
+      this.finalValue = value;
+      obs.next(Try.success(undefined));
       obs.complete();
     });
   }

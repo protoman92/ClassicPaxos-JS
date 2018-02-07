@@ -1,4 +1,4 @@
-import { Observable, Subscription } from 'rxjs';
+import { Observable, Subject, Subscription } from 'rxjs';
 import * as uuid from 'uuid';
 import { Collections, Numbers, Try } from 'javascriptutilities';
 
@@ -22,6 +22,49 @@ import {
 } from './mockAPI';
 
 let timeout = 5000;
+
+describe('Suggester utilities should be implemented correctly', () => {
+  let subscription: Subscription;
+
+  beforeEach(() => subscription = new Subscription());
+
+  it('Group messages should be implemented correctly', done => {
+    interface Groupable {
+      sid: SID.Type;
+    }
+
+    let subject = new Subject<Groupable>();
+    let times = 1000;
+    let iterTimes = 5;
+    let cutoff = 1000;
+    let groupables: Groupable[][] = [];
+
+    subject.asObservable()
+      .transform(v => Suggester.groupMessages(v, v1 => v1.sid, cutoff))
+      .doOnNext(v => groupables.push(v))
+      .subscribe()
+      .toBeDisposedBy(subscription);
+
+    /// When
+    Observable.range(0, times)
+      .map((v): Groupable => ({ sid: { id: '' + v, integer: v } }))
+      .doOnNext(v => Numbers.range(0, iterTimes)
+        .forEach(v1 => {
+          let delay = v1 * (cutoff / (iterTimes - 2));
+          setTimeout(() => subject.next(v), delay);
+      }))
+      .toArray()
+      .delay(cutoff + 100)
+      .doOnNext(() => {
+        expect(groupables).toHaveLength(1);
+        expect(groupables[0].length).toBeLessThan(iterTimes);
+        expect(groupables[0].every(v => v.sid.integer === times - 1)).toBeTruthy();
+      })
+      .doOnCompleted(() => done())
+      .subscribe()
+      .toBeDisposedBy(subscription);
+  }, timeout);
+});
 
 describe('Suggester should be implemented correctly', () => {
   let voterCount = 10;
@@ -72,13 +115,11 @@ describe('Suggester should be implemented correctly', () => {
     let sid: SID.Type = { id: '0', integer: 1000 };
 
     let allResponses = [
-      ...Numbers.range(0, majority).map(() => ({
-        suggestionId: sid,
+      ...Numbers.range(0, majority).map(() => ({ sid,
         lastAccepted: Try.failure<LastAcceptedData<Value>>(''),
       })),
 
-      ...Numbers.range(0, minority).map(v => ({
-        suggestionId: sid,
+      ...Numbers.range(0, minority).map(v => ({ sid,
         lastAccepted: Try.success<LastAcceptedData<Value>>({
           sid: { id: uuid(), integer: v }, value: priorValue,
         }),
@@ -111,15 +152,13 @@ describe('Suggester should be implemented correctly', () => {
     let sid = { id: '0', integer: 1000 };
 
     let allResponses = [
-      ...Numbers.range(0, majority).map(v => ({
-        suggestionId: sid,
+      ...Numbers.range(0, majority).map(v => ({ sid,
         lastAccepted: Try.success<LastAcceptedData<Value>>({
           sid: { id: uuid(), integer: v }, value: priorValue,
         }),
       })),
 
-      ...Numbers.range(0, minority).map(() => ({
-        suggestionId: sid,
+      ...Numbers.range(0, minority).map(() => ({ sid,
         lastAccepted: Try.failure<LastAcceptedData<Value>>(''),
       })),
     ];

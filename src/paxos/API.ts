@@ -90,24 +90,23 @@ export namespace RetryHandler {
     }
   }
 
-  export namespace IncrementalBackoff {
+  export namespace CustomBackoff {
+    export type DelayMapper = (initial: number, iteration: number) => number;
     /**
-     * Coordinate retries using incremental backoff strategy.
+     * Coordinate retries using a custom backoff strategy.
      * @implements {Type} Type implementation.
      */
     export class Self implements Type {
       private readonly initialDelay: number;
-      private readonly multiple: number;
+      private readonly mapper: DelayMapper;
 
-      public constructor(initialDelay: number, multiple: number) {
+      public constructor(initialDelay: number, mapper: DelayMapper) {
         this.initialDelay = initialDelay;
-        this.multiple = multiple;
+        this.mapper = mapper;
       }
 
       /**
-       * Delay emission with increasingly larger values. Please do not use
-       * a trigger that emits undefined/null/void because they will be filtered
-       * out at the end of the stream.
+       * Delay emission with custom intervals.
        * @template T Generic parameter.
        * @param {Observable<T>} trigger Retry trigger.
        * @returns {Observable<T>} An Observable instance.
@@ -119,7 +118,7 @@ export namespace RetryHandler {
         }
 
         let t0 = this.initialDelay;
-        let multiple = this.multiple;
+        let mapper = this.mapper;
         let initial: ScannedResult = { number: -1, value: undefined };
 
         /// The only reason scanned result has Nullable<T> as value is because
@@ -130,9 +129,21 @@ export namespace RetryHandler {
         return trigger
           .scan((acc, v) => ({ number: acc.number + 1, value: v }), initial)
           .filter(v => v.number > -1)
-          .map(v => ({ delay: t0 * (multiple ** v.number), value: v.value }))
+          .map(v => ({ delay: mapper(t0, v.number), value: v.value }))
           .concatMap(v => Observable.timer(v.delay).map(() => v.value))
           .map(v => <T>v);
+      }
+    }
+  }
+
+  export namespace IncrementalBackoff {
+    /**
+     * Coordinate retries using incremental backoff strategy.
+     * @extends {CustomBackoff.Self} CustomBackoff extension.
+     */
+    export class Self extends CustomBackoff.Self {
+      public constructor(initialDelay: number, multiple: number) {
+        super(initialDelay, (a, b) => a * (multiple ** b));
       }
     }
   }
@@ -145,7 +156,21 @@ export namespace Arbiter {
    * @extends {MajorityCalculator.Type} Majority calculator extension.
    * @template T Generic parameter.
    */
-  export interface Type<T> extends Participant.Type<T>, MajorityCalculator.Type {}
+  export interface Type<T> extends Participant.Type<T>, MajorityCalculator.Type {
+    /**
+     * Convert a value to string for a group operation.
+     * @param {T} value A T instance.
+     * @returns {string} A string value.
+     */
+    stringifyValue(value: T): string;
+
+    /**
+     * Declare a final value and conclude Paxos.
+     * @param {T} value A T instance.
+     * @returns {Observable<Try<any>>} An Observable instance.
+     */
+    declareFinalValue(value: T): Observable<Try<any>>;
+  }
 }
 
 export namespace Suggester {

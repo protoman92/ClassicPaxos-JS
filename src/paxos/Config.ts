@@ -6,12 +6,6 @@ export namespace QuorumAware {
    */
   export interface Type {
     quorumSize: number;
-
-    /**
-     * This value is used for a take cutoff operation, in order to cap the wait
-     * time for messages. Note that the value here should denote milliseconds.
-     */
-    takeCutoff: number;
   }
 }
 
@@ -28,7 +22,13 @@ export namespace Suggester {
    * Represents the config for a suggester.
    * @extends {QuorumAware.Type} QuorumAware extension.
    */
-  export interface Type extends QuorumAware.Type {}
+  export interface Type extends QuorumAware.Type {
+    /**
+     * This value is used for a take cutoff operation, in order to cap the wait
+     * time for messages. Note that the value here should denote milliseconds.
+     */
+    takeCutoff: number;
+  }
 }
 
 export namespace Node {

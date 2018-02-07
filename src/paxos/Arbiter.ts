@@ -1,6 +1,6 @@
 import { Observable, Subscription } from 'rxjs';
 import * as uuid from 'uuid';
-import { Nullable, Try } from 'javascriptutilities';
+import { Collections, Nullable, Try } from 'javascriptutilities';
 import * as API from './API';
 import * as Config from './Config';
 import * as Message from './Message';
@@ -96,25 +96,33 @@ class Self<T> implements Type<T> {
   public setupBindings = (): void => {
     try {
       let api = this.api.getOrThrow();
-      let config = this.config.getOrThrow();
       let uid = this._uid;
       let majority = this.calculateQuorumMajority();
-      let takeCutoff = config.takeCutoff;
       let subscription = this.subscription;
       let messageStream = this.arbiterMessageStream().shareReplay(1);
 
-      messageStream
+      let declareStream = messageStream
         .map(v => v.flatMap(v1 => Message.Acceptance.extract(v1)))
         .mapNonNilOrEmpty(v => v)
-        .groupBy(v => SID.toString(v.sid))
-        .switchMap(v => v.takeUntil(Observable.timer(takeCutoff)).toArray())
-        .filter(v => v.length >= majority)
-        .logNext()
+        .groupBy(v => `${SID.toString(v.sid)}-${api.stringifyValue(v.value)}`)
+        .flatMap(v => v.take(majority).toArray()
+          .map(v1 => Collections.first(v1).map(v2 => v2.value))
+          .map(v1 => v1.getOrThrow())
+          .flatMap(v1 => api.declareFinalValue(v1))
+          .catchJustReturn(e => Try.failure(e)))
+        .shareReplay(1);
+
+      /// Terminate the stream when a final value has been successfully declared.
+      declareStream
+        .filter(v => v.isSuccess()).take(1)
         .subscribe()
         .toBeDisposedBy(subscription);
 
       Observable
-        .merge<Error>(messageStream.mapNonNilOrEmpty(v => v.error))
+        .merge<Error>(
+          messageStream.mapNonNilOrEmpty(v => v.error),
+          declareStream.mapNonNilOrEmpty(v => v.error),
+        )
         .flatMap(e => api.sendErrorStack(uid, e))
         .subscribe()
         .toBeDisposedBy(subscription);

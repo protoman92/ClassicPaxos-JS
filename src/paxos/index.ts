@@ -8,6 +8,7 @@ import * as Role from './Role';
 import * as Suggester from './Suggester';
 import * as SuggestionId from './SuggestionId';
 import * as Voter from './Voter';
+import * as Utils from './util';
 
 export {
   API,
@@ -20,4 +21,5 @@ export {
   Suggester,
   SuggestionId,
   Voter,
+  Utils,
 };

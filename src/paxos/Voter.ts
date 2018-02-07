@@ -138,7 +138,7 @@ class Self<T> implements Type<T> {
             .map(v1 => v1.getOrThrow())
             .flatMap(() => api.getLastAcceptedData(uid))
             .map((v1): Message.Permission.Granted.Type<T> => {
-              return { suggestionId: sid, lastAccepted: v1 };
+              return { sid: sid, lastAccepted: v1 };
             })
             .map(v1 => ({ type: Message.Case.PERMIT_GRANTED, message: v1 }));
         } else {

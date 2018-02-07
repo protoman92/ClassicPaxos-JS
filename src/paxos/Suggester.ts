@@ -38,6 +38,26 @@ export let supportsMessageType = (type: Message.Case): boolean => {
 };
 
 /**
+ * Group messages by suggestion id, then batch them with a timed listen. This
+ * is done so that a suggester does not wait too long for certain messages
+ * before it decides to retry.
+ * @template T Generic parameter.
+ * @param {Observable<T>} stream An Observable instance.
+ * @param {(msg: T) => SID.Type} keySelector Suggestion ID key selector.
+ * @param {number} cutoff Time interval cutoff.
+ * @returns {Observable<T[]>} An Observable instance.
+ */
+export function groupMessages<T>(
+  stream: Observable<T>,
+  keySelector: (msg: T) => SID.Type,
+  cutoff: number,
+): Observable<T[]> {
+  return stream.groupBy(v => SID.toString(keySelector(v))).switchMap(v => {
+    return v.takeUntil(Observable.timer(cutoff)).toArray();
+  });
+}
+
+/**
  * Represents a suggester. The suggester is responsible for:
  * - Sending the original permission request to suggest a value. It will then
  * either receive a permission granted or a nack message indicating that the
@@ -140,8 +160,7 @@ class Self<T> implements Type<T> {
       let grantedStream = messageStream
         .map(v => v.flatMap(v1 => Message.Permission.Granted.extract(v1)))
         .mapNonNilOrEmpty(v => v)
-        .groupBy(v => SID.toString(v.suggestionId))
-        .switchMap(v => v.takeUntil(Observable.timer(takeCutoff)).toArray())
+        .transform(v => groupMessages(v, v1 => v1.sid, takeCutoff))
         .shareReplay(1);
 
       let tryStream = this.retryCoordinator
@@ -150,27 +169,25 @@ class Self<T> implements Type<T> {
 
       /// We perform a scan before depositing a new SID to the try trigger in
       /// order to filter out SIDs that are smaller than the current SID.
-      let sidStream = Observable.merge(
-        grantedStream.filter(v => v.length < majority)
-          .withLatestFrom(tryStream, (_v1, v2) => v2)
-          .mapNonNilOrEmpty(v => v),
+      Observable
+        .merge<SID.Type>(
+          grantedStream.filter(v => v.length < majority)
+            .withLatestFrom(tryStream, (_v1, v2) => v2)
+            .mapNonNilOrEmpty(v => v),
 
-        /// When we receive the majority of responses as NACKs, we need to
-        /// store the highest last granted suggestion id in order to request
-        /// permission with a higher SID the next time.
-        messageStream
-          .map(v => v.flatMap(v1 => Message.Nack.extract(v1)))
-          .mapNonNilOrEmpty(v => v)
-          .groupBy(v => SID.toString(v.currentSID))
-          .switchMap(v => v.takeUntil(Observable.timer(takeCutoff)).toArray())
-          .filter(v => v.length >= majority)
-          .map(v => SID.highestSID(v, v1 => v1.lastGrantedSID))
-          .map(v => v.map(v1 => v1.lastGrantedSID))
-          .mapNonNilOrEmpty(v => v),
-      );
-
-      /// Increment the current SID to be the new SID for a permission request.
-      Reactives.ensureOrder(sidStream, (a, b) => SID.higherThan(a, b))
+          /// When we receive the majority of responses as NACKs, we need to
+          /// store the highest last granted suggestion id in order to request
+          /// permission with a higher SID the next time.
+          messageStream
+            .map(v => v.flatMap(v1 => Message.Nack.extract(v1)))
+            .mapNonNilOrEmpty(v => v)
+            .transform(v => groupMessages(v, v1 => v1.currentSID, takeCutoff))
+            .filter(v => v.length >= majority)
+            .map(v => SID.highestSID(v, v1 => v1.lastGrantedSID))
+            .map(v => v.map(v1 => v1.lastGrantedSID))
+            .mapNonNilOrEmpty(v => v),
+        )
+        .transform(v => Reactives.ensureOrder(v, (a, b) => SID.higherThan(a, b)))
         .map(v => SID.increment(v))
         .subscribe(this.tryPermissionTrigger())
         .toBeDisposedBy(subscription);
@@ -180,9 +197,7 @@ class Self<T> implements Type<T> {
       tryStream
         .mapNonNilOrElse(v => v, { id: uid, integer: 0 })
         .map((v): Message.Permission.Request.Type => ({ senderId: uid, sid: v }))
-        .map((v): Message.Generic.Type<T> => ({
-          type: Message.Case.PERMIT_REQUEST, message: v,
-        }))
+        .map((v) => ({ type: Message.Case.PERMIT_REQUEST, message: v }))
         .switchMap(v => api.broadcastMessage(v))
         .subscribe()
         .toBeDisposedBy(subscription);
@@ -221,7 +236,7 @@ class Self<T> implements Type<T> {
 
     /// All suggestion ids should be the same here since we have already grouped
     /// messages by their suggestion ids.
-    let sid = Collections.first(messages).map(v => v.suggestionId);
+    let sid = Collections.first(messages).map(v => v.sid);
 
     return Try.success(messages)
       .map(v => Collections.flatMap(v.map(v1 => v1.lastAccepted)))
