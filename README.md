@@ -1,8 +1,10 @@
-# paxos-js
+# ClassicPaxos-JS
+
+[![Build Status](https://travis-ci.org/protoman92/ClassicPaxos-JS.svg?branch=master)](https://travis-ci.org/protoman92/ClassicPaxos-JS)
 
 A classical implementation of the Paxos algorithm using reactive streams. In this implementation, arbiters, suggesters and voters will listen the messages pertaining to their roles and react appropriately.
 
-This implementation leaves how messaging details, i.e. how messages are handled, by abstracting them to a common API interface. As a result, it can be used to handle different systems and configurations, so long as the messaging APIs are correctly implemented.
+This implementation leaves out messaging details, i.e. how messages are handled, by abstracting them to a common API interface. As a result, it can be used to handle different systems and configurations, so long as the messaging APIs are correctly implemented.
 
 ### HOW-TO: ###
 A Paxos **Node** is an instance that serves all 3 roles at once. Define a **Node** as such:
