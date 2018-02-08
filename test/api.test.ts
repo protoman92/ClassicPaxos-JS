@@ -57,7 +57,7 @@ describe('Retry coordinator should be implemented correctly', () => {
 
       if (lastTimestamp !== null && lastTimestamp !== undefined) {
         let offset = current - lastTimestamp;
-        expect(offset).toBeLessThan(5);
+        expect(offset / current).toBeLessThan(0.01);
       }
 
       if (lastValue !== null && lastValue !== undefined) {
