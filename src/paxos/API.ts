@@ -147,6 +147,18 @@ export namespace RetryHandler {
       }
     }
   }
+
+  export namespace ExponentialBackoff {
+    /**
+     * Coordinate retries using exponential backoff strategy.
+     * @extends {CustomBackoff.Self} CustomBackoff extension.
+     */
+    export class Self extends CustomBackoff.Self {
+      public constructor() {
+        super(0, (_a, b) => Math.pow(2, b) * 100);
+      }
+    }
+  }
 }
 
 export namespace Arbiter {

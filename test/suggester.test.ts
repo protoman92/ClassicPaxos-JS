@@ -34,7 +34,7 @@ describe('Suggester utilities should be implemented correctly', () => {
     }
 
     let subject = new Subject<Groupable>();
-    let times = 1000;
+    let times = 100;
     let iterTimes = 5;
     let cutoff = 1000;
     let groupables: Groupable[][] = [];
@@ -60,6 +60,7 @@ describe('Suggester utilities should be implemented correctly', () => {
         expect(groupables[0].length).toBeLessThan(iterTimes);
         expect(groupables[0].every(v => v.sid.integer === times - 1)).toBeTruthy();
       })
+      .doOnError(e => fail(e))
       .doOnCompleted(() => done())
       .subscribe()
       .toBeDisposedBy(subscription);

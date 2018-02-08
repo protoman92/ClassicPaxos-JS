@@ -40,15 +40,27 @@ export namespace Node {
    * @extends {Arbiter.Type} Arbiter extension.
    * @extends {Suggester.Type} Suggester extension.
    */
-  export interface Type extends Arbiter.Type, Suggester.Type {}
+  export interface Type extends Arbiter.Type, Suggester.Type {
+    /**
+     * A node may claim leadership if it does not receive any request message
+     * within some delay. Essentially we are allowing voters/arbiters to play
+     * the role of suggester as well.
+     */
+    readonly delayBeforeClaimingLeadership: number;
+  }
 
   /**
    * Represents the config for a node.
    * @implements {Type} Type implementation.
    */
   class Self implements Type {
+    public _delayBeforeClaimingLeadership: number;
     public _quorumSize: number;
     public _takeCutoff: number;
+
+    public get delayBeforeClaimingLeadership(): number {
+      return this._delayBeforeClaimingLeadership;
+    }
 
     public get quorumSize(): number {
       return this._quorumSize;
@@ -59,6 +71,7 @@ export namespace Node {
     }
 
     public constructor() {
+      this._delayBeforeClaimingLeadership = 0;
       this._quorumSize = 0;
       this._takeCutoff = 0;
     }
@@ -72,6 +85,16 @@ export namespace Node {
 
     public constructor() {
       this.config = new Self();
+    }
+
+    /**
+     * Set the delay before a node can claim leadership.
+     * @param {number} delay A number value.
+     * @returns {this} The current Builder instance.
+     */
+    public withDelayBeforeClaimingLeadership = (delay: number): this => {
+      this.config._delayBeforeClaimingLeadership = delay;
+      return this;
     }
 
     /**

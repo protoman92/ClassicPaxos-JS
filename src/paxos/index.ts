@@ -1,7 +1,7 @@
 import * as API from './API';
 import * as Arbiter from './Arbiter';
 import * as Config from './Config';
-import * as Instance from './Instance';
+import * as Coordinator from './Coordinator';
 import * as Message from './Message';
 import * as Node from './Node';
 import * as Role from './Role';
@@ -14,7 +14,7 @@ export {
   API,
   Arbiter,
   Config,
-  Instance,
+  Coordinator,
   Message,
   Node,
   Role,

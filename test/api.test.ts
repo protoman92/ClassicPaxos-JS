@@ -22,6 +22,7 @@ describe('Retry coordinator should be implemented correctly', () => {
   let subscription: Subscription;
   let retryCount = 5;
   let timeout = 100000;
+  let percentThreshold = 0.05;
 
   let testRetryCoordinator = (
     coordinator: API.RetryHandler.Type,
@@ -68,7 +69,7 @@ describe('Retry coordinator should be implemented correctly', () => {
     });
   }, timeout);
 
-  it('Exponential backoff coordinator should be implemented correctly', done => {
+  it('Incremental backoff coordinator should be implemented correctly', done => {
     let initial = 500;
     let multiplier = 1.2;
     let coordinator = new API.RetryHandler.IncrementalBackoff.Self(initial, multiplier);
@@ -82,7 +83,30 @@ describe('Retry coordinator should be implemented correctly', () => {
         let difference = initial * (multiplier ** iter);
         let theoretical = lastTimestamp + difference;
         let offset = current - theoretical;
-        expect(offset / current).toBeLessThan(0.01);
+        expect(offset / current).toBeLessThan(percentThreshold);
+      }
+
+      if (lastValue !== null && lastValue !== undefined) {
+        expect(v - lastValue).toBe(1);
+      }
+
+      lastTimestamp = current;
+      lastValue = v;
+    });
+  }, timeout);
+
+  it('Exponential backoff coordinate should be implemented correctly', done => {
+    let coordinator = new API.RetryHandler.ExponentialBackoff.Self();
+    let lastTimestamp: Nullable<number>;
+    let lastValue: Nullable<number>;
+
+    testRetryCoordinator(coordinator, retryCount, done, (iter, v) => {
+      let current = new Date().getTime();
+
+      if (lastTimestamp !== undefined && lastTimestamp !== null) {
+        let difference = (current - lastTimestamp) / 100;
+        let offset = Math.abs(difference - (2 ** (iter - 1)));
+        expect(offset / difference).toBeLessThan(percentThreshold);
       }
 
       if (lastValue !== null && lastValue !== undefined) {

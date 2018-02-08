@@ -1,9 +1,10 @@
-import { Observable, Observer, Subject } from 'rxjs';
+import { Observable, Observer, Subject, Subscription } from 'rxjs';
 import * as uuid from 'uuid';
 import { Nullable, Try } from 'javascriptutilities';
 import * as Arbiter from './Arbiter';
 import * as Config from './Config';
 import * as Message from './Message';
+import * as SID from './SuggestionId';
 import * as Suggester from './Suggester';
 import * as Voter from './Voter';
 
@@ -26,17 +27,26 @@ class Self<T> implements Type<T> {
   public _arbiter: Nullable<Arbiter.Type<T>>;
   public _suggester: Nullable<Suggester.Type<T>>;
   public _voter: Nullable<Voter.Type<T>>;
+  private readonly subscription: Subscription;
 
-  public get arbiter(): Try<Arbiter.Type<T>> {
+  private get arbiter(): Try<Arbiter.Type<T>> {
     return Try.unwrap(this._arbiter, 'Missing arbiter');
   }
 
-  public get suggester(): Try<Suggester.Type<T>> {
+  private get suggester(): Try<Suggester.Type<T>> {
     return Try.unwrap(this._suggester, 'Missing suggester');
   }
 
-  public get voter(): Try<Voter.Type<T>> {
+  private get voter(): Try<Voter.Type<T>> {
     return Try.unwrap(this._voter, 'Missing voter');
+  }
+
+  private get config(): Try<Config.Node.Type> {
+    return Try.unwrap(this._config, 'Missing config for node');
+  }
+
+  private get delayBeforeClaimingLeadership(): number {
+    return this.config.map(v => v.delayBeforeClaimingLeadership).getOrElse(0);
   }
 
   public get uid(): string {
@@ -45,6 +55,7 @@ class Self<T> implements Type<T> {
 
   public constructor() {
     this._uid = uuid();
+    this.subscription = new Subscription();
   }
 
   public setupBindings = (): void => {
@@ -52,6 +63,20 @@ class Self<T> implements Type<T> {
       this.arbiter.getOrThrow().setupBindings();
       this.suggester.getOrThrow().setupBindings();
       this.voter.getOrThrow().setupBindings();
+      let leadershipDelay = this.delayBeforeClaimingLeadership;
+
+      Observable
+        .merge<Try<Message.Generic.Type<T>>>(
+          this.arbiterMessageStream(),
+          this.voterMessageStream(),
+        )
+        .map((): Nullable<SID.Type> => undefined)
+        .timeout(leadershipDelay)
+        .ignoreElements()
+        .catch(() => this.tryPermissionStream().take(1))
+        .subscribe(this.tryPermissionTrigger())
+        .toBeDisposedBy(this.subscription);
+
     } catch (e) {
       throw e;
     }
@@ -64,6 +89,10 @@ class Self<T> implements Type<T> {
     } catch (e) {
       return Observable.of(Try.failure(e));
     }
+  }
+
+  public sendFirstPermissionRequest = (): void => {
+    this.suggester.doOnNext(v => v.sendFirstPermissionRequest());
   }
 
   public tryPermissionTrigger = (): Observer<any> => {

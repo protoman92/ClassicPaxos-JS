@@ -70,6 +70,10 @@ export function groupMessages<T>(
  * @template T Generic parameter.
  */
 export interface Type<T> extends Participant.Type {
+  /**
+   * When this method is called, a Paxos instance is officially started.
+   */
+  sendFirstPermissionRequest(): void;
   tryPermissionTrigger(): Observer<Nullable<SID.Type>>;
 
   /**
@@ -127,6 +131,10 @@ class Self<T> implements Type<T> {
       .flatMap(v => Try.unwrap(v.calculateMajority))
       .map(v => v(qSize))
       .getOrElse(() => API.MajorityCalculator.calculateDefault(qSize));
+  }
+
+  public sendFirstPermissionRequest = (): void => {
+    this.tryPermissionSbj.next(undefined);
   }
 
   public suggesterMessageStream = (): Observable<Try<Message.Generic.Type<T>>> => {

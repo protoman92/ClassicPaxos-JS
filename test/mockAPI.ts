@@ -1,6 +1,7 @@
 import { BehaviorSubject, Observable, Subject, Subscriber } from 'rxjs';
 
 import {
+  Collections,
   JSObject,
   Nullable,
   Numbers,
@@ -38,7 +39,12 @@ export let rangeMin = 0;
 export let rangeMax = 100000;
 export let valueRandomizer = (): Value => Numbers.randomBetween(rangeMin, rangeMax);
 
-export function createNode<T>(uid: string, api: NodeAPI<T>, config: NodeConfig): Node.Type<T> {
+export function createNode<T>(
+  uid: string,
+  api: NodeAPI<T>,
+  config: NodeConfig,
+  retryCoordinator: API.RetryHandler.Type = new API.RetryHandler.Noop.Self(),
+): Node.Type<T> {
   let arbiter = Arbiter.builder<T>()
     .withUID(uid)
     .withAPI(api)
@@ -49,6 +55,7 @@ export function createNode<T>(uid: string, api: NodeAPI<T>, config: NodeConfig):
     .withUID(uid)
     .withAPI(api)
     .withConfig(config)
+    .withRetryCoordinator(retryCoordinator)
     .build();
 
   let voter = Voter.builder<T>()
@@ -164,6 +171,12 @@ export class PaxosAPI<T> implements NodeAPI<T> {
     this.permitReq = Object.assign({}, this.permitReq, newPermissionReq);
     this.suggestReq = Object.assign({}, this.suggestReq, newSuggestionReq);
     this.registerParticipants(...voters);
+  }
+
+  public registerNodes(...nodes: Node.Type<T>[]): void {
+    this.registerArbiters(...nodes);
+    this.registerSuggesters(...nodes);
+    this.registerVoters(...nodes);
   }
 
   public receiveMessage(uid: string): Observable<Try<GenericMsg<T>>> {
@@ -378,12 +391,123 @@ export class PaxosAPI<T> implements NodeAPI<T> {
   }
 }
 
+export class UnstablePaxosAPI<T> implements NodeAPI<T> {
+  public unstable: boolean;
+  private readonly api: PaxosAPI<T>;
+  private readonly minResponseDelay: number;
+
+  public constructor(api: PaxosAPI<T>, minResponseDelay: number) {
+    this.api = api;
+    this.unstable = false;
+    this.minResponseDelay = minResponseDelay;
+  }
+
+  private destabilize<R>(obs: Observable<R>, _caller: string): Observable<R> {
+    if (this.unstable) {
+      let cases = Instability.allValues();
+      let instability = Collections.randomElement(cases).getOrThrow();
+      // console.log(`${caller} - instability: ${instability}`);
+
+      switch (instability) {
+        case Instability.Case.DELAYED_RESPONSE:
+          let minDelay = this.minResponseDelay;
+          let delay = Numbers.randomBetween(minDelay, minDelay * 10);
+          return Observable.timer(delay).flatMap(() => obs);
+
+        case Instability.Case.DEAD_NODE:
+          return Observable.empty();
+
+        case Instability.Case.NORMAL:
+        default:
+          return obs;
+      }
+    } else {
+      return obs;
+    }
+  }
+
+  public stringifyValue(value: T) {
+    return this.api.stringifyValue(value);
+  }
+
+  public declareFinalValue(value: T) {
+    let caller = `declareFinalValue: ${value}`;
+    return this.destabilize(this.api.declareFinalValue(value), caller);
+  }
+
+  public receiveMessage(uid: string) {
+    let caller = 'receiveMessage';
+    return this.destabilize(this.api.receiveMessage(uid), caller);
+  }
+
+  public sendMessage(uid: string, msg: GenericMsg<T>) {
+    let caller = `sendMessage: ${msg.type}`;
+    return this.destabilize(this.api.sendMessage(uid, msg), caller);
+  }
+
+  public broadcastMessage(msg: GenericMsg<T>) {
+    let caller = `broadcastMessage: ${msg.type}`;
+    return this.destabilize(this.api.broadcastMessage(msg), caller);
+  }
+
+  public sendErrorStack(uid: string, error: Error) {
+    let caller = 'sendErrorStack';
+    return this.destabilize(this.api.sendErrorStack(uid, error), caller);
+  }
+
+  public getFirstSuggestionValue(uid: string) {
+    let caller = 'getFirstSuggestionValue';
+    return this.destabilize(this.api.getFirstSuggestionValue(uid), caller);
+  }
+
+  public getLastGrantedSuggestionId(uid: string) {
+    let caller = 'getLastGrantedSuggestionId';
+    return this.destabilize(this.api.getLastGrantedSuggestionId(uid), caller);
+  }
+
+  public storeLastGrantedSuggestionId(uid: string, sid: SID.Type) {
+    let caller = `storeLastGrantedSuggestionId: ${JSON.stringify(sid)}`;
+    return this.destabilize(this.api.storeLastGrantedSuggestionId(uid, sid), caller);
+  }
+
+  public getLastAcceptedData(uid: string) {
+    let caller = 'getLastAcceptedData';
+    return this.destabilize(this.api.getLastAcceptedData(uid), caller);
+  }
+
+  public storeLastAcceptedData(uid: string, data: LastAcceptedData<T>) {
+    let caller = `storeLastAcceptedData: ${JSON.stringify(data)}`;
+    return this.destabilize(this.api.storeLastAcceptedData(uid, data), caller);
+  }
+}
+
 export class PaxosConfig implements NodeConfig {
+  public delayBeforeClaimingLeadership: number;
   public quorumSize: number;
   public takeCutoff: number;
 
   public constructor() {
+    this.delayBeforeClaimingLeadership = 10000;
     this.quorumSize = 0;
     this.takeCutoff = 0;
   }
+}
+
+export namespace Instability {
+  export enum Case {
+    DELAYED_RESPONSE = 'DELAYED_RESPONSE',
+    DEAD_NODE = 'DEAD_NODE',
+    NORMAL = 'NORMAL',
+  }
+
+  /// We have less dead nodes to simulate lower possibility of it happening.
+  export let allValues = () => [
+    Case.DELAYED_RESPONSE,
+    Case.DELAYED_RESPONSE,
+    Case.DELAYED_RESPONSE,
+    Case.DEAD_NODE,
+    Case.NORMAL,
+    Case.NORMAL,
+    Case.NORMAL,
+  ];
 }

@@ -1,4 +1,6 @@
+import { Collections, Try } from 'javascriptutilities';
 import * as Arbiter from './Arbiter';
+import * as Node from './Node';
 import * as Suggester from './Suggester';
 import * as Voter from './Voter';
 
@@ -14,6 +16,15 @@ export interface Type<T> {
   readonly arbiters: Arbiter.Type<T>[];
   readonly suggesters: Suggester.Type<T>[];
   readonly voters: Voter.Type<T>[];
+
+  /**
+   * Commence the decision process. This call is optional if all participants
+   * serve three roles at once, because even if it is not invoked, some other
+   * participant(s) will self-elect to propose values.
+   * @param {(uid: string) => boolean} [leaderSelector] Leader selector. If
+   * this is not defined, select a random leader.
+   */
+  commenceDecisionProcess(leaderSelector?: (uid: string) => boolean): void;
 }
 
 /**
@@ -35,13 +46,23 @@ class Self<T> implements Type<T> {
   }
 
   public get voters(): Voter.Type<T>[] {
-    return this.voters;
+    return this._voters;
   }
 
   public constructor() {
     this._arbiters = [];
     this._suggesters = [];
     this._voters = [];
+  }
+
+  public commenceDecisionProcess = (leaderFn?: (v: string) => boolean): void => {
+    Try.success(this._suggesters)
+      .flatMap((v): Try<Suggester.Type<T>> => {
+        return leaderFn !== undefined
+          ? Collections.first(v.filter(v1 => leaderFn(v1.uid)))
+          : Collections.randomElement(v);
+      })
+      .doOnNext(v => v.sendFirstPermissionRequest());
   }
 }
 
@@ -83,6 +104,15 @@ export class Builder<T> {
   }
 
   /**
+   * Add a node to the current Paxos instance.
+   * @param {Node.Type<T>} node A Node instance.
+   * @returns {this} The current Builder instance.
+   */
+  public addNode(node: Node.Type<T>): this {
+    return this.addArbiter(node).addSuggester(node).addVoter(node);
+  }
+
+  /**
    * Set the arbiters for a Paxos instance.
    * @param {...Arbiter.Type<T>[]} arbiters An Array of arbiters.
    * @returns {this} The current Builder instance.
@@ -110,6 +140,18 @@ export class Builder<T> {
   public withVoters = (...voters: Voter.Type<T>[]): this => {
     this.instance._voters = voters;
     return this;
+  }
+
+  /**
+   * Set nodes for a Paxos instance. These nodes serve all roles.
+   * @param {...Node.Type<T>[]} nodes An Array of nodes.
+   * @returns {this} The current Builder instance.
+   */
+  public withNodes = (...nodes: Node.Type<T>[]): this => {
+    return this
+      .withArbiters(...nodes)
+      .withSuggesters(...nodes)
+      .withVoters(...nodes);
   }
 
   public build = (): Type<T> => this.instance;
