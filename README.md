@@ -1,6 +1,7 @@
 # ClassicPaxos-JS
 
 [![Build Status](https://travis-ci.org/protoman92/ClassicPaxos-JS.svg?branch=master)](https://travis-ci.org/protoman92/ClassicPaxos-JS)
+[![Coverage Status](https://coveralls.io/repos/github/protoman92/ClassicPaxos-JS/badge.svg?branch=master)](https://coveralls.io/github/protoman92/ClassicPaxos-JS?branch=master)
 
 A classical implementation of the Paxos algorithm using reactive streams. In this implementation, arbiters, suggesters and voters will listen the messages pertaining to their roles and react appropriately.
 
